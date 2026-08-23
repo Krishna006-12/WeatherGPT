@@ -1,0 +1,236 @@
+{
+  "users": [
+    {
+      "id": "user-1",
+      "name": "Demo User",
+      "phone": "9999999999",
+      "created_at": "2026-08-23T00:23:40.557Z"
+    }
+  ],
+  "locations": [
+    {
+      "id": "loc-1",
+      "user_id": "user-1",
+      "city_key": "lucknow",
+      "name": "Lucknow",
+      "is_current": true
+    },
+    {
+      "id": "loc-2",
+      "user_id": "user-1",
+      "city_key": "mumbai",
+      "name": "Mumbai",
+      "is_current": false
+    },
+    {
+      "id": "loc-3",
+      "user_id": "user-1",
+      "city_key": "guwahati",
+      "name": "Guwahati",
+      "is_current": false
+    }
+  ],
+  "weather_cache": {
+    "lucknow": {
+      "current": {
+        "temp": 32,
+        "condition": "Sunny",
+        "icon": "☀️",
+        "humidity": 45,
+        "wind": 8,
+        "updated_at": "2026-08-23T00:23:40.557Z"
+      },
+      "forecast": [
+        {
+          "day": "Today",
+          "high": 32,
+          "low": 24,
+          "rain": 10,
+          "condition": "Sunny",
+          "icon": "☀️"
+        },
+        {
+          "day": "Tomorrow",
+          "high": 29,
+          "low": 23,
+          "rain": 60,
+          "condition": "Rain",
+          "icon": "🌧️"
+        },
+        {
+          "day": "Wed",
+          "high": 28,
+          "low": 22,
+          "rain": 80,
+          "condition": "Heavy Rain",
+          "icon": "⛈️"
+        },
+        {
+          "day": "Thu",
+          "high": 30,
+          "low": 23,
+          "rain": 20,
+          "condition": "Cloudy",
+          "icon": "☁️"
+        },
+        {
+          "day": "Fri",
+          "high": 33,
+          "low": 25,
+          "rain": 5,
+          "condition": "Sunny",
+          "icon": "☀️"
+        }
+      ]
+    },
+    "mumbai": {
+      "current": {
+        "temp": 28,
+        "condition": "Cloudy",
+        "icon": "☁️",
+        "humidity": 82,
+        "wind": 15,
+        "updated_at": "2026-08-23T00:23:40.557Z"
+      },
+      "forecast": [
+        {
+          "day": "Today",
+          "high": 28,
+          "low": 25,
+          "rain": 70,
+          "condition": "Rain",
+          "icon": "🌧️"
+        },
+        {
+          "day": "Tomorrow",
+          "high": 27,
+          "low": 24,
+          "rain": 85,
+          "condition": "Heavy Rain",
+          "icon": "⛈️"
+        },
+        {
+          "day": "Wed",
+          "high": 27,
+          "low": 24,
+          "rain": 60,
+          "condition": "Rain",
+          "icon": "🌧️"
+        },
+        {
+          "day": "Thu",
+          "high": 28,
+          "low": 25,
+          "rain": 30,
+          "condition": "Cloudy",
+          "icon": "☁️"
+        },
+        {
+          "day": "Fri",
+          "high": 29,
+          "low": 26,
+          "rain": 20,
+          "condition": "Cloudy",
+          "icon": "☁️"
+        }
+      ]
+    },
+    "guwahati": {
+      "current": {
+        "temp": 26,
+        "condition": "Mist",
+        "icon": "🌫️",
+        "humidity": 88,
+        "wind": 5,
+        "updated_at": "2026-08-23T00:23:40.557Z"
+      },
+      "forecast": [
+        {
+          "day": "Today",
+          "high": 26,
+          "low": 21,
+          "rain": 40,
+          "condition": "Cloudy",
+          "icon": "☁️"
+        },
+        {
+          "day": "Tomorrow",
+          "high": 27,
+          "low": 22,
+          "rain": 30,
+          "condition": "Cloudy",
+          "icon": "☁️"
+        },
+        {
+          "day": "Wed",
+          "high": 28,
+          "low": 22,
+          "rain": 20,
+          "condition": "Sunny",
+          "icon": "⛅"
+        },
+        {
+          "day": "Thu",
+          "high": 29,
+          "low": 23,
+          "rain": 15,
+          "condition": "Sunny",
+          "icon": "☀️"
+        },
+        {
+          "day": "Fri",
+          "high": 30,
+          "low": 23,
+          "rain": 25,
+          "condition": "Cloudy",
+          "icon": "☁️"
+        }
+      ]
+    }
+  },
+  "alerts": [
+    {
+      "id": "lko-1",
+      "city_key": "lucknow",
+      "severity": "amber",
+      "title": "Heavy Rain Watch",
+      "summary": "Heavy rainfall expected in next 24-48 hrs",
+      "official_text": "IMD issues Yellow Watch for Lucknow district. Heavy rainfall (64.5-115.5mm) likely at isolated places.",
+      "what_it_means": "Carry umbrella, avoid low-lying routes. Farmers: postpone pesticide spray.",
+      "created_at": "2026-08-22T22:23:40.557Z",
+      "is_active": true
+    },
+    {
+      "id": "mum-1",
+      "city_key": "mumbai",
+      "severity": "red",
+      "title": "Extreme Rain Warning",
+      "summary": "Red alert: 200mm+ rain expected, high tide risk",
+      "official_text": "IMD RED WARNING: Extremely heavy rainfall (>204.4mm) very likely in Mumbai & suburbs. High tide at 14:30 IST. NDMA: Avoid coastal areas.",
+      "what_it_means": "DO NOT travel unless essential. Charge phones. Fishermen: do not venture into sea.",
+      "created_at": "2026-08-22T23:53:40.557Z",
+      "is_active": true
+    }
+  ],
+  "agri_advisory": {
+    "lucknow": {
+      "recent_rain": 12,
+      "forecast_rain": 45,
+      "soil_moisture": "Medium",
+      "advice": "Hold irrigation for 3 days"
+    },
+    "mumbai": {
+      "recent_rain": 85,
+      "forecast_rain": 120,
+      "soil_moisture": "High",
+      "advice": "No irrigation needed, ensure drainage"
+    },
+    "guwahati": {
+      "recent_rain": 22,
+      "forecast_rain": 18,
+      "soil_moisture": "Medium",
+      "advice": "Irrigate lightly tomorrow morning"
+    }
+  },
+  "chat_logs": []
+}
