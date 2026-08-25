@@ -109,8 +109,8 @@ export default function App() {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages, isTyping])
 
-  // Send Chat message
-  const handleSendChat = (messageText = chatInput) => {
+  // Send Chat message with dynamic worldwide geocoding
+  const handleSendChat = async (messageText = chatInput) => {
     if (!messageText.trim() || !weatherData) return
 
     const userMsg = {
@@ -123,16 +123,25 @@ export default function App() {
     setChatInput('')
     setIsTyping(true)
 
-    setTimeout(() => {
-      const intentObj = parseCopilotIntent(messageText, activeCity.key)
-      
-      // If query specified another city, switch or fetch context
-      if (intentObj.targetCity && intentObj.targetCity !== activeCity.key) {
-        const found = DEFAULT_INDIAN_CITIES.find(c => c.key === intentObj.targetCity)
-        if (found) setActiveCity(found)
+    try {
+      const intentObj = await parseCopilotIntent(messageText, activeCity.key)
+      let targetWeather = weatherData
+      let targetNwp = nwpData
+
+      // If user queried about another city (e.g. New York, London, Kanpur, Patna)
+      if (intentObj.resolvedCity) {
+        if (intentObj.resolvedCity.lat !== activeCity.lat || intentObj.resolvedCity.lon !== activeCity.lon) {
+          setActiveCity(intentObj.resolvedCity)
+          targetWeather = await fetchLiveWeather(intentObj.resolvedCity)
+          targetNwp = await fetchNwpComparison(intentObj.resolvedCity)
+          setWeatherData(targetWeather)
+          setNwpData(targetNwp)
+          const agro = evaluateAgroAdvisory(targetWeather, lang)
+          setAgroData(agro)
+        }
       }
 
-      const botResp = generateGroundedResponse(intentObj, weatherData, nwpData, activeAlerts, lang)
+      const botResp = generateGroundedResponse(intentObj, targetWeather, targetNwp, activeAlerts, lang)
       const botMsg = {
         id: Date.now() + 1,
         role: 'assistant',
@@ -141,7 +150,12 @@ export default function App() {
       }
       setIsTyping(false)
       setChatMessages(prev => [...prev, botMsg])
-    }, 450)
+    } catch (err) {
+      console.warn('Chat copilot processing error:', err)
+      const fallbackResp = generateGroundedResponse({ intent: 'general' }, weatherData, nwpData, activeAlerts, lang)
+      setIsTyping(false)
+      setChatMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', ...fallbackResp, timestamp: new Date() }])
+    }
   }
 
   // Voice Input Handler

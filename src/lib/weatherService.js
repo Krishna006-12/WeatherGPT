@@ -1,26 +1,26 @@
 // Comprehensive Meteorological & NWP Data Service for WeatherGPT
 
 export const DEFAULT_INDIAN_CITIES = [
-  { key: 'lucknow', name: 'Lucknow', name_hi: 'लखनऊ', state: 'Uttar Pradesh', lat: 26.8467, lon: 80.9462 },
-  { key: 'kanpur', name: 'Kanpur', name_hi: 'कानपुर', state: 'Uttar Pradesh', lat: 26.4499, lon: 80.3319 },
-  { key: 'mumbai', name: 'Mumbai', name_hi: 'मुंबई', state: 'Maharashtra', lat: 19.0760, lon: 72.8777 },
-  { key: 'delhi', name: 'New Delhi', name_hi: 'नई दिल्ली', state: 'Delhi NCR', lat: 28.6139, lon: 77.2090 },
-  { key: 'bengaluru', name: 'Bengaluru', name_hi: 'बेंगलुरु', state: 'Karnataka', lat: 12.9716, lon: 77.5946 },
-  { key: 'pune', name: 'Pune', name_hi: 'पुणे', state: 'Maharashtra', lat: 18.5204, lon: 73.8567 },
-  { key: 'patna', name: 'Patna', name_hi: 'पटना', state: 'Bihar', lat: 25.5941, lon: 85.1376 },
-  { key: 'kolkata', name: 'Kolkata', name_hi: 'कोलकाता', state: 'West Bengal', lat: 22.5726, lon: 88.3639 },
-  { key: 'chennai', name: 'Chennai', name_hi: 'चेन्नई', state: 'Tamil Nadu', lat: 13.0827, lon: 80.2707 },
-  { key: 'hyderabad', name: 'Hyderabad', name_hi: 'हैदराबाद', state: 'Telangana', lat: 17.3850, lon: 78.4867 },
-  { key: 'guwahati', name: 'Guwahati', name_hi: 'गुवाहाटी', state: 'Assam', lat: 26.1445, lon: 91.7362 },
-  { key: 'varanasi', name: 'Varanasi', name_hi: 'वाराणसी', state: 'Uttar Pradesh', lat: 25.3176, lon: 82.9739 },
-  { key: 'jaipur', name: 'Jaipur', name_hi: 'जयपुर', state: 'Rajasthan', lat: 26.9124, lon: 75.7873 },
-  { key: 'ahmedabad', name: 'Ahmedabad', name_hi: 'अहमदाबाद', state: 'Gujarat', lat: 23.0225, lon: 72.5714 },
-  { key: 'chandigarh', name: 'Chandigarh', name_hi: 'चंडीगढ़', state: 'Punjab / Haryana', lat: 30.7333, lon: 76.7794 },
-  { key: 'bhopal', name: 'Bhopal', name_hi: 'भोपाल', state: 'Madhya Pradesh', lat: 23.2599, lon: 77.4126 },
-  { key: 'indore', name: 'Indore', name_hi: 'इंदौर', state: 'Madhya Pradesh', lat: 22.7196, lon: 75.8577 },
-  { key: 'ranchi', name: 'Ranchi', name_hi: 'राँची', state: 'Jharkhand', lat: 23.3441, lon: 85.3096 },
-  { key: 'nagpur', name: 'Nagpur', name_hi: 'नागपुर', state: 'Maharashtra', lat: 21.1458, lon: 79.0882 },
-  { key: 'srinagar', name: 'Srinagar', name_hi: 'श्रीनगर', state: 'Jammu & Kashmir', lat: 34.0837, lon: 74.7973 }
+  { key: 'lucknow', name: 'Lucknow', name_hi: 'लखनऊ', state: 'Uttar Pradesh', country: 'India', lat: 26.8467, lon: 80.9462 },
+  { key: 'kanpur', name: 'Kanpur', name_hi: 'कानपुर', state: 'Uttar Pradesh', country: 'India', lat: 26.4499, lon: 80.3319 },
+  { key: 'mumbai', name: 'Mumbai', name_hi: 'मुंबई', state: 'Maharashtra', country: 'India', lat: 19.0760, lon: 72.8777 },
+  { key: 'delhi', name: 'New Delhi', name_hi: 'नई दिल्ली', state: 'Delhi NCR', country: 'India', lat: 28.6139, lon: 77.2090 },
+  { key: 'bengaluru', name: 'Bengaluru', name_hi: 'बेंगलुरु', state: 'Karnataka', country: 'India', lat: 12.9716, lon: 77.5946 },
+  { key: 'pune', name: 'Pune', name_hi: 'पुणे', state: 'Maharashtra', country: 'India', lat: 18.5204, lon: 73.8567 },
+  { key: 'patna', name: 'Patna', name_hi: 'पटना', state: 'Bihar', country: 'India', lat: 25.5941, lon: 85.1376 },
+  { key: 'kolkata', name: 'Kolkata', name_hi: 'कोलकाता', state: 'West Bengal', country: 'India', lat: 22.5726, lon: 88.3639 },
+  { key: 'chennai', name: 'Chennai', name_hi: 'चेन्नई', state: 'Tamil Nadu', country: 'India', lat: 13.0827, lon: 80.2707 },
+  { key: 'hyderabad', name: 'Hyderabad', name_hi: 'हैदराबाद', state: 'Telangana', country: 'India', lat: 17.3850, lon: 78.4867 },
+  { key: 'guwahati', name: 'Guwahati', name_hi: 'गुवाहाटी', state: 'Assam', country: 'India', lat: 26.1445, lon: 91.7362 },
+  { key: 'varanasi', name: 'Varanasi', name_hi: 'वाराणसी', state: 'Uttar Pradesh', country: 'India', lat: 25.3176, lon: 82.9739 },
+  { key: 'jaipur', name: 'Jaipur', name_hi: 'जयपुर', state: 'Rajasthan', country: 'India', lat: 26.9124, lon: 75.7873 },
+  { key: 'ahmedabad', name: 'Ahmedabad', name_hi: 'अहमदाबाद', state: 'Gujarat', country: 'India', lat: 23.0225, lon: 72.5714 },
+  { key: 'chandigarh', name: 'Chandigarh', name_hi: 'चंडीगढ़', state: 'Punjab / Haryana', country: 'India', lat: 30.7333, lon: 76.7794 },
+  { key: 'bhopal', name: 'Bhopal', name_hi: 'भोपाल', state: 'Madhya Pradesh', country: 'India', lat: 23.2599, lon: 77.4126 },
+  { key: 'indore', name: 'Indore', name_hi: 'इंदौर', state: 'Madhya Pradesh', country: 'India', lat: 22.7196, lon: 75.8577 },
+  { key: 'ranchi', name: 'Ranchi', name_hi: 'राँची', state: 'Jharkhand', country: 'India', lat: 23.3441, lon: 85.3096 },
+  { key: 'nagpur', name: 'Nagpur', name_hi: 'नागपुर', state: 'Maharashtra', country: 'India', lat: 21.1458, lon: 79.0882 },
+  { key: 'srinagar', name: 'Srinagar', name_hi: 'श्रीनगर', state: 'Jammu & Kashmir', country: 'India', lat: 34.0837, lon: 74.7973 }
 ]
 
 // WMO Weather code interpreter with icons & labels
@@ -51,7 +51,7 @@ export function interpretWeatherCode(code) {
   }
 }
 
-// Search locations using Open-Meteo Geocoding
+// Search locations worldwide (Indian + Global cities)
 export async function searchCities(query) {
   if (!query || query.trim().length < 2) return []
   const clean = query.trim().toLowerCase()
@@ -64,19 +64,19 @@ export async function searchCities(query) {
   )
 
   try {
-    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=en&format=json`)
+    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=en&format=json`)
     if (res.ok) {
       const data = await res.json()
       if (data.results && data.results.length > 0) {
-        const remoteResults = data.results
-          .filter(r => r.country_code === 'IN' || !r.country_code)
-          .map(r => ({
-            key: r.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-            name: r.name,
-            state: r.admin1 || r.country || 'India',
-            lat: r.latitude,
-            lon: r.longitude
-          }))
+        const remoteResults = data.results.map(r => ({
+          key: r.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          name: r.name,
+          state: r.admin1 ? `${r.admin1}, ${r.country || ''}` : (r.country || 'Global'),
+          country: r.country || '',
+          countryCode: r.country_code || '',
+          lat: r.latitude,
+          lon: r.longitude
+        }))
         
         // Merge & deduplicate
         const merged = [...localMatches]
@@ -85,7 +85,7 @@ export async function searchCities(query) {
             merged.push(rem)
           }
         })
-        return merged.slice(0, 8)
+        return merged.slice(0, 10)
       }
     }
   } catch (err) {
@@ -95,14 +95,49 @@ export async function searchCities(query) {
   return localMatches
 }
 
+// Direct city name resolver
+export async function lookupCity(cityName) {
+  if (!cityName || !cityName.trim()) return null
+  const clean = cityName.trim().toLowerCase()
+
+  // Check local first
+  const local = DEFAULT_INDIAN_CITIES.find(c => 
+    c.name.toLowerCase() === clean || 
+    c.key === clean ||
+    (c.name_hi && c.name_hi.toLowerCase() === clean)
+  )
+  if (local) return local
+
+  // Fallback to remote geocoding
+  try {
+    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=en&format=json`)
+    if (res.ok) {
+      const data = await res.json()
+      if (data.results && data.results.length > 0) {
+        const r = data.results[0]
+        return {
+          key: r.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          name: r.name,
+          state: r.admin1 ? `${r.admin1}, ${r.country || ''}` : (r.country || 'Global'),
+          country: r.country || '',
+          lat: r.latitude,
+          lon: r.longitude
+        }
+      }
+    }
+  } catch {}
+
+  return null
+}
+
 // Fetch comprehensive live meteorological data
 export async function fetchLiveWeather(city) {
   const cacheKey = `weathergpt_cache_${city.lat.toFixed(2)}_${city.lon.toFixed(2)}`
   
   try {
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,is_day&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,soil_moisture_0_to_7cm,soil_moisture_7_to_28cm,et0_fao_evapotranspiration&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,uv_index_max,wind_speed_10m_max,sunrise,sunset&timezone=Asia%2FKolkata&forecast_days=7`
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,is_day&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,soil_moisture_0_to_7cm,soil_moisture_7_to_28cm,et0_fao_evapotranspiration&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,uv_index_max,wind_speed_10m_max,sunrise,sunset&timezone=auto&forecast_days=7`
     
-    const aqiUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${city.lat}&longitude=${city.lon}&current=pm10,pm2_5,european_aqi,us_aqi&timezone=Asia%2FKolkata`
+    const aqiUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${city.lat}&longitude=${city.lon}&current=pm10,pm2_5,european_aqi,us_aqi&timezone=auto`
 
     const [weatherRes, aqiRes] = await Promise.all([
       fetch(weatherUrl),
@@ -174,8 +209,8 @@ export async function fetchLiveWeather(city) {
     const avgEt0 = hourly.et0_fao_evapotranspiration ? Number((hourly.et0_fao_evapotranspiration.slice(0, 24).reduce((a,b)=>a+b,0)).toFixed(1)) : 3.8
 
     // AQI index
-    const pm25 = aqiJson?.current?.pm2_5 ? Math.round(aqiJson.current.pm2_5) : 38
-    const pm10 = aqiJson?.current?.pm10 ? Math.round(aqiJson.current.pm10) : 72
+    const pm25 = aqiJson?.current?.pm2_5 ? Math.round(aqiJson.current.pm2_5) : 32
+    const pm10 = aqiJson?.current?.pm10 ? Math.round(aqiJson.current.pm10) : 65
     const aqiScore = aqiJson?.current?.us_aqi ? Math.round(aqiJson.current.us_aqi) : Math.round(pm25 * 2.2)
 
     const fullPack = {
@@ -183,6 +218,7 @@ export async function fetchLiveWeather(city) {
       cityName: city.name,
       cityName_hi: city.name_hi || city.name,
       state: city.state,
+      country: city.country || 'India',
       lat: city.lat,
       lon: city.lon,
       isLive: true,
@@ -223,7 +259,6 @@ export async function fetchLiveWeather(city) {
       }
     }
 
-    // Save to localStorage
     try {
       localStorage.setItem(cacheKey, JSON.stringify(fullPack))
     } catch {}
@@ -241,7 +276,6 @@ export async function fetchLiveWeather(city) {
       }
     } catch {}
 
-    // Fallback static payload if everything fails
     return getStaticFallbackWeather(city)
   }
 }
@@ -249,7 +283,7 @@ export async function fetchLiveWeather(city) {
 // Multi-Model NWP Ensemble (GFS, ECMWF, ICON comparison)
 export async function fetchNwpComparison(city) {
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&daily=temperature_2m_max,precipitation_sum&models=gfs_seamless,ecmwf_ifs04,icon_seamless&timezone=Asia%2FKolkata&forecast_days=3`
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&daily=temperature_2m_max,precipitation_sum&models=gfs_seamless,ecmwf_ifs04,icon_seamless&timezone=auto&forecast_days=3`
     const res = await fetch(url)
     if (res.ok) {
       const data = await res.json()
@@ -261,7 +295,6 @@ export async function fetchNwpComparison(city) {
       const ecmwfTemp = data.daily?.temperature_2m_max_ecmwf_ifs04?.[1] ?? 31
       const iconTemp = data.daily?.temperature_2m_max_icon_seamless?.[1] ?? 32.5
 
-      // Calculate model spread / variance
       const rainSpread = Math.max(gfsRain, ecmwfRain, iconRain) - Math.min(gfsRain, ecmwfRain, iconRain)
       const agreementScore = Math.max(50, Math.round(100 - rainSpread * 4.5))
 
@@ -303,6 +336,7 @@ function getStaticFallbackWeather(city) {
     cityName: city.name,
     cityName_hi: city.name_hi || city.name,
     state: city.state,
+    country: city.country || 'India',
     lat: city.lat,
     lon: city.lon,
     isLive: false,
