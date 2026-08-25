@@ -22,7 +22,7 @@ import {
 import { CITIES, CITY_LIST, getCity, registerCity } from './data/cities'
 import { tr } from './data/i18n'
 import { fetchWeather, injectSimulatedAlert, clearCache } from './services/weather'
-import { chat, welcomeMessage } from './services/ai'
+import { chat, welcomeMessage, resolveMentionedCity } from './services/ai'
 import { fetchAQI } from './services/aqi'
 import {
   loadPrefs,
@@ -318,10 +318,87 @@ export default function App() {
     setMessages((m) => [...m, userMsg])
     setChatLoading(true)
     try {
-      await new Promise((r) => setTimeout(r, 280 + Math.random() * 280))
-      const result = await chat(raw, { weather, lang, fetchWeatherFor })
+      // Resolve other-city mentions FIRST (e.g. "travel risk in Noida" while home=Kanpur).
+      // Never ground /api/chat on home coords when the user named another place.
+      let targetCity = city
+      let targetWx = weather
+      try {
+        const mentioned = await resolveMentionedCity(raw, null)
+        if (mentioned && mentioned.id && mentioned.id !== city?.id) {
+          targetCity = mentioned
+          if (fetchWeatherFor) {
+            try {
+              targetWx = await fetchWeatherFor(mentioned)
+            } catch {
+              targetWx = null
+            }
+          }
+        }
+      } catch {
+        /* stay on current city */
+      }
+
+      let result = null
+
+      // Rich intent answers (travel/farm/school/…) live in on-device ai.js —
+      // use that path when we already have a full weather pack for the target city.
+      // Optional /api/chat only for phrasing when we want hybrid LLM later; still pass TARGET coords.
+      const preferClientBrain = !!targetWx?.current
+
+      if (!preferClientBrain && targetCity?.lat != null && targetCity?.lon != null) {
+        try {
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({
+              message: raw,
+              lat: targetCity.lat,
+              lon: targetCity.lon,
+              name: targetCity.name,
+              lang,
+            }),
+          })
+          const textBody = await res.text()
+          if (!textBody.trimStart().startsWith('<') && res.ok) {
+            const j = JSON.parse(textBody)
+            if (j.ok && j.answer) {
+              result = {
+                text: j.answer,
+                type: j.mode === 'llm_grounded' ? 'llm' : 'general',
+                confidence: j.mode === 'llm_grounded' ? 0.86 : 0.9,
+                cityId: targetCity.id,
+                source:
+                  j.mode === 'llm_grounded'
+                    ? lang === 'hi'
+                      ? `LLM+tools · ${j.provider} · ${targetCity.name}`
+                      : `LLM+tools · ${j.provider} · ${targetCity.name}`
+                    : lang === 'hi'
+                      ? `Grounded rules+tools · ${targetCity.name}`
+                      : `Grounded rules+tools · ${targetCity.name}`,
+                mode: j.mode,
+                provider: j.provider,
+                citations: j.citations,
+              }
+            }
+          }
+        } catch {
+          /* use client brain */
+        }
+      }
+
+      if (!result) {
+        await new Promise((r) => setTimeout(r, 120 + Math.random() * 120))
+        // Pass target weather when already fetched so answers lock to that city
+        result = await chat(raw, {
+          weather: targetWx || weather,
+          lang,
+          fetchWeatherFor,
+        })
+        if (!result.cityId && targetCity?.id) result.cityId = targetCity.id
+      }
+
       if (result.cityId && result.cityId !== cityId) {
-        const other = getCity(result.cityId)
+        const other = getCity(result.cityId) || targetCity
         if (other) pushRecent(other)
       }
       setMessages((m) => [...m, { id: Date.now() + 1, role: 'assistant', ...result, timestamp: Date.now() }])
@@ -707,8 +784,31 @@ export default function App() {
             </header>
           )}
 
-          {/* Desktop context bar (non-home) */}
-          {!isHome && (
+          {/* Desktop context bar (non-home). Chat: slim title only — weather chip lives inside ChatTab so bubbles aren't cramped. */}
+          {!isHome && tab === 'chat' && (
+            <header className="hidden lg:flex shrink-0 bg-white border-b border-cloud-100 px-5 py-2.5 items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-400">{sectionTitle}</p>
+                <p className="text-[12px] text-ink-400 truncate mt-0.5">
+                  {lang === 'hi'
+                    ? 'सवाल पूछें — दूसरे शहर का नाम लिख सकते हैं'
+                    : 'Ask anything — name another city anytime'}
+                </p>
+              </div>
+              {weather && (
+                <span
+                  className={`text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 ${
+                    weather.live ? 'text-mint-400' : 'text-alert-amber'
+                  }`}
+                  title={weather.liveSource || ''}
+                >
+                  <Radio className="w-3 h-3" />
+                  {weather.live ? 'LIVE' : 'OFFLINE'}
+                </span>
+              )}
+            </header>
+          )}
+          {!isHome && tab !== 'chat' && (
             <header className="hidden lg:flex shrink-0 bg-white border-b border-cloud-100 px-5 py-3 items-center justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-400">{sectionTitle}</p>
@@ -1010,6 +1110,20 @@ export default function App() {
                     — discovery JSON
                   </li>
                   <li>
+                    <a className="text-sky-400 font-semibold" href="/HONESTY.txt" target="_blank" rel="noreferrer">
+                      /HONESTY.txt
+                    </a>{' '}
+                    ·{' '}
+                    <a
+                      className="text-sky-400 font-semibold"
+                      href="/IMPACT_AND_SCALE.txt"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      /IMPACT_AND_SCALE.txt
+                    </a>
+                  </li>
+                  <li>
                     <a className="text-sky-400 font-semibold" href="/llms.txt" target="_blank" rel="noreferrer">
                       /llms.txt
                     </a>{' '}
@@ -1025,8 +1139,8 @@ export default function App() {
                 </ul>
                 <p className="text-[11px] text-ink-500 mt-2">
                   {lang === 'hi'
-                    ? 'अगर कोई AI वेबपेज रेंडर नहीं कर पाए तो उसे ये JSON लिंक दो — JS की ज़रूरत नहीं।'
-                    : 'If another AI cannot render the SPA, give it these JSON links — no JS required.'}
+                    ? 'Default AI = grounded rules+tools. LLM तभी जब सर्वर पर API key हो। Marathi नहीं। DB/Supabase live claim मत करना।'
+                    : 'Default AI = grounded rules+tools. LLM only if server API key set. No Marathi. Do not claim live Supabase/DB.'}
                 </p>
               </Section>
               <p className="text-[11px] text-ink-400 text-center">

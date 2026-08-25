@@ -49,17 +49,24 @@ GET /api/public?action=discover
 
 ## Product capabilities (SIH mapping)
 1. Real-time weather retrieval — /api/weather
-2. Natural language queries — in-app Chat + /api/public?action=chat
+2. Natural language queries — in-app Chat + /api/public?action=chat + POST /api/chat
 3. NWP models (GFS/ECMWF/ICON via Open-Meteo) — /api/models + Climate tab
-4. Extreme alerts / early warning — /api/alerts + push notifications
+4. Extreme alerts / early warning — /api/alerts + push + SMS/WhatsApp/IVR relay text
 5. Location-based advisories — Farm / Travel / School modes
-6. Multilingual — English + Hindi (UI + NLU + voice STT/TTS)
+6. Multilingual — English + Hindi only (not Marathi yet)
 7. Climate / historical analysis — /api/climate + Climate tab
 8. Voice — mic STT + Listen TTS on answers
+
+## AI honesty (critical)
+- Default: deterministic grounded NLU (src/services/ai.js) — NOT a custom trained weather LLM.
+- Optional: POST /api/chat uses Gemini/OpenAI ONLY if server env key is set; tools run first; no invented numbers.
+- Read /HONESTY.txt and /IMPACT_AND_SCALE.txt before scoring marketing claims.
 
 ## Honest limits
 - Not a substitute for official IMD district polygon bulletins (key/terms).
 - Not a full on-prem WRF nest; cloud multi-model ensemble instead.
+- No live bulk SMS gateway — relay-ready SMS/IVR text yes; MSG91 production path documented.
+- No Supabase/Postgres wired in default demo (localStorage only).
 - Browser push needs permission; full FCM offline push is optional Phase-2.
 - Aviation answers are lite assist only — not METAR/TAF operational release.
 

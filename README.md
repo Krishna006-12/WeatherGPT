@@ -1,86 +1,137 @@
-# WeatherGPT ☀️  
-### AI Weather Intelligence for India — Hackathon Edition
+# WeatherGPT
 
-**Live pitch line:** *“IMD-style alerts + bilingual AI chat + krishi advisories — every answer source-attributed.”*
+**AI-assisted weather intelligence for India** (SIH / hackathon build)
+
+> College internal round: **selected**.  
+> This README is written for **Round-2 technical honesty** — no overclaims.
 
 ---
 
-## 🎯 Problem
-Generic weather apps fail Indian users:
-- No trustworthy **alert plain-language** (“what this means for *me*”)
-- Weak **Hindi-first** experience
-- Zero **farm irrigation / spray** guidance tied to local rain & soil signals
-- Black-box answers with **no source citations**
+## What it is
 
-## ✅ Solution
-**WeatherGPT** is a mobile-first AI weather copilot for India:
+Mobile-first **PWA** that helps people act on weather:
 
-| Pillar | What judges see |
-|--------|-----------------|
-| **Chat** | EN/HI intent AI grounded on live weather · confidence + citations |
-| **Alerts** | Yellow / Amber / Red thresholds · official-style bulletin · “means for you” |
-| **Farm** | Soil moisture model · irrigation advice · spray window · crop tags |
-| **Forecast** | Hourly + 5-day charts · live Open-Meteo |
-| **Cities** | 15 India metros · GPS snap · IMD station IDs |
-| **Demo superpower** | One-tap **Simulate RED alert** for live pitch |
+- Live conditions & forecast (Open-Meteo)
+- **Hindi + English** UI and Q&A
+- Explainable advisories: **Farm / Travel / School**
+- Multi-source **alerts** (GDACS, flood model, meteo thresholds) + browser notifications
+- **Climate trends** + **NWP multi-model** compare (GFS / ECMWF / ICON / blend)
+- **Public JSON APIs** so judges / other AIs can test without rendering React
 
-## 🏗️ Architecture
+**Product rule:** weather *numbers* always come from meteorological APIs (or a labelled offline fallback). The app must not invent LIVE temps, alerts, or sources.
 
-```
-┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  React UI   │────▶│  AI Intent Brain │────▶│  Grounded reply │
-│  EN ⇄ HI    │     │  rain/alert/agri │     │  + confidence   │
-└──────┬──────┘     └────────▲─────────┘     └─────────────────┘
-       │                     │
-       ▼                     │
-┌─────────────┐     ┌────────┴─────────┐
-│ Open-Meteo  │────▶│ Weather pack     │
-│ (live free) │     │ + IMD thresholds │
-└─────────────┘     └──────────────────┘
-       │
-       ▼ offline fallback pack (demo never dies)
-```
+---
 
-## 🚀 Run locally
+## What the “AI” actually is (read this)
+
+| Layer | Reality |
+|--------|---------|
+| **Default brain** | Deterministic **grounded NLU** in `src/services/ai.js` — intent/keyword routing over a live weather pack. **Not** a trained custom ML weather model. |
+| **Optional LLM** | If server env `GEMINI_API_KEY` (or `OPENAI_API_KEY`) is set, `api/chat.js` can **polish language** after tools fetch weather. **LLM never invents observations** — it only sees tool JSON. |
+| **Name “WeatherGPT”** | Product name for “GPT-style assistant UX”. Without an API key, there is **no** ChatGPT/Gemini network call. |
+
+**Round-2 answer if asked “which model / accuracy / training data?”**
+
+1. Observation & forecast accuracy → **upstream NWP / Open-Meteo / GDACS / flood** (cite them).  
+2. Our layer → **decision support + bilingual explanation + alert routing**, evaluated by source attribution & latency, not by claiming a private weather ML model.  
+3. Optional Gemini/OpenAI → **language only**, grounded on tool output.  
+4. We do **not** claim IMD official district polygon accuracy without an IMD licence.
+
+---
+
+## Languages
+
+| Language | Status |
+|----------|--------|
+| English | Full UI + NLU + voice |
+| Hindi | Full UI + NLU + voice |
+| Marathi / other Indic | **Not implemented** (roadmap i18n packs) |
+
+---
+
+## Run
 
 ```bash
 cd weathergpt
+rm -f postcss.config.js   # if present — breaks Tailwind v4
 npm install
-npm run dev
+npm run dev               # http://localhost:5173
 ```
 
-Open the printed URL (binds `0.0.0.0:5173`).
+Full serverless routes locally:
 
 ```bash
-npm run build    # production bundle
-npm run preview  # serve build
+npx vercel dev
 ```
 
-## 🎤 90-second judge script
+Production:
 
-1. Open app → **Kanpur / Lucknow** live temp loads.  
-2. Tap demo chip: *“Will it rain in Lucknow tomorrow?”* → sourced answer.  
-3. Switch **हिंदी** → ask *“क्या सिंचाई करूँ?”* → krishi advisory.  
-4. **Alerts** tab → hit **⚡ Simulate RED alert** → bulletin + chat push.  
-5. **Farm** + **Forecast** tabs → charts & soil meter.  
-6. Info (ⓘ) → architecture / production path.
+```bash
+npm run build
+npx vercel --prod
+```
 
-## 🆓 Production free tier
-- **Web:** Vercel  
-- **DB:** Supabase (locations, alert log, chat audit)  
-- **LLM:** Gemini free tier for open-ended chat (current brain is deterministic + grounded — swap-ready)  
-- **SMS:** MSG91 / Twilio on RED  
-- **Official:** IMD authorised API when licensed; thresholds already IMD-aligned
+Optional LLM (server only — do not put keys in the frontend):
 
-## 📁 Key files
-- `src/services/weather.js` — fetch, cache, alert engine, agri model, offline pack  
-- `src/services/ai.js` — bilingual intent + grounded answers  
-- `src/data/cities.js` — India cities + IMD IDs + crop profiles  
-- `src/App.jsx` — shell, tabs, demo simulation  
-
-## 🛡️ Honesty note
-Alert *wording* follows IMD colour categories for UX; live colour triggers use model precipitation/wind/code thresholds on Open-Meteo data. Production should merge authorised IMD warning polygons.
+```bash
+# Vercel project env
+GEMINI_API_KEY=...
+# or
+OPENAI_API_KEY=...
+```
 
 ---
 
-Built to **win selection** · India-first · demo-bulletproof
+## Architecture
+
+```
+React PWA (Vite)
+  → /api/weather | alerts | climate | models | aqi | geocode | public | chat
+       → Open-Meteo (forecast, archive, multi-model, AQI, flood)
+       → GDACS (multi-hazard)
+  → Optional: Gemini/OpenAI for phrasing only (api/chat.js)
+```
+
+**Database:** not required for core demo. Browser `localStorage` holds prefs, chat history, notification dedupe.  
+Postgres/Supabase is a **planned** phase (devices, watch list, alert log) — not claimed as live unless wired.
+
+**SMS / IVR:** not a live gateway in this build. App generates **SMS-ready text**, `sms:` links, WhatsApp share, and IVR script templates for rural relay. Production path: MSG91/Twilio + DLT (India) — see `public/IMPACT_AND_SCALE.txt`.
+
+---
+
+## Key URLs (after deploy)
+
+| URL | Purpose |
+|-----|---------|
+| `/` | App |
+| `/api/public` | Machine discovery (no JS) |
+| `/llms.txt` | Instructions for external AIs |
+| `/sih.html` | SIH matrix (static HTML) |
+| `/openapi.json` | OpenAPI sketch |
+| `/HONESTY.txt` | Claims vs reality |
+| `/IMPACT_AND_SCALE.txt` | Cost / scale / rural / gov plan (transparent model) |
+
+---
+
+## Demo script (~90s)
+
+1. Home — LIVE badge, AI Brief (What → Expect → Do).  
+2. Chat — Hindi rain/farm question; tap **Listen** (TTS).  
+3. Alerts — nearby feed; **Send test** notification; optional Simulate RED.  
+4. Share alert — **SMS text / WhatsApp** (rural relay).  
+5. Climate — 12‑month trend + GFS/ECMWF/ICON row.  
+6. Open `/sih.html` + `/api/public` for evaluators who cannot render SPA.
+
+---
+
+## Team docs
+
+- **`TEAM_APP_GUIDE.txt`** — full system map for the team  
+- **`HONESTY.txt`** (public) — what we claim / don’t claim  
+- **`DEPLOY_STEPS_HI.md`** — deploy in Hindi  
+
+---
+
+## Licence / data
+
+Upstream ToS apply (Open-Meteo, GDACS, etc.). IMD official APIs need separate authorisation.

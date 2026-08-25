@@ -1,7 +1,27 @@
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, BellRing, CheckCircle2, ChevronRight, MapPin, Radio, RefreshCw, Zap } from 'lucide-react'
+import {
+  Bell,
+  BellRing,
+  CheckCircle2,
+  ChevronRight,
+  MapPin,
+  MessageCircle,
+  Phone,
+  Radio,
+  RefreshCw,
+  Share2,
+  Zap,
+} from 'lucide-react'
 import { tr } from '../data/i18n'
+import {
+  alertIvrScript,
+  alertSmsBody,
+  copyText,
+  shareOrCopy,
+  smsLink,
+  whatsappShareLink,
+} from '../services/outreach'
 
 function severityMeta(sev) {
   if (sev === 'red') return { label: 'SEVERE', cls: 'sev-severe', bar: 'bg-alert-red' }
@@ -29,6 +49,7 @@ export default function AlertsTab({
 }) {
   const [open, setOpen] = useState(null)
   const [tab, setTab] = useState('local') // local | nearby
+  const [relayMsg, setRelayMsg] = useState('')
   const local = weather?.alerts || []
   const nearby = nearbyFeed?.alerts || []
   const city = weather?.city
@@ -36,6 +57,40 @@ export default function AlertsTab({
       ? weather.city.name_hi || weather.city.name
       : weather.city.name
     : ''
+
+  const flashRelay = (t) => {
+    setRelayMsg(t)
+    setTimeout(() => setRelayMsg(''), 2000)
+  }
+
+  const relayAlert = async (a, kind) => {
+    const body = alertSmsBody(a, { lang, place: a.place || city })
+    if (kind === 'sms') {
+      window.location.href = smsLink(body)
+      flashRelay(lang === 'hi' ? 'SMS ऐप खोल रहे…' : 'Opening SMS…')
+      return
+    }
+    if (kind === 'wa') {
+      window.open(whatsappShareLink(body), '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (kind === 'ivr') {
+      const script = alertIvrScript(a, { lang, place: a.place || city })
+      const r = await copyText(script)
+      flashRelay(r === 'copied' ? (lang === 'hi' ? 'IVR स्क्रिप्ट कॉपी' : 'IVR script copied') : '—')
+      return
+    }
+    if (kind === 'share') {
+      const r = await shareOrCopy(body)
+      flashRelay(
+        r === 'shared' || r === 'copied'
+          ? lang === 'hi'
+            ? 'शेयर/कॉपी ✓'
+            : 'Shared/copied ✓'
+          : '—'
+      )
+    }
+  }
 
   const all = tab === 'local' ? local : nearby
 
@@ -157,6 +212,12 @@ export default function AlertsTab({
           {lang === 'hi' ? 'वॉच: ' : 'Watching: '}
           {watchLabel}
         </p>
+        <p className="text-[10px] text-ink-500 mt-2 leading-relaxed">
+          {lang === 'hi'
+            ? 'रूरल रिले: स्मार्टफोन न होने पर स्वयंसेवक SMS/WhatsApp/IVR स्क्रिप्ट से आगे भेज सकता है। बल्क SMS गेटवे (MSG91) प्रोडक्शन प्लान — /IMPACT_AND_SCALE.txt'
+            : 'Rural relay: if someone has no smartphone, a volunteer can forward via SMS/WhatsApp/IVR script. Bulk SMS gateway (MSG91) is production plan — see /IMPACT_AND_SCALE.txt'}
+        </p>
+        {relayMsg && <p className="text-[11px] text-mint-400 font-semibold mt-1">{relayMsg}</p>}
       </div>
 
       {/* Local vs Nearby */}
@@ -268,6 +329,37 @@ export default function AlertsTab({
                       {a.place ? ` · ${a.place}` : ''}
                     </p>
                   )}
+                  <div className="flex flex-wrap gap-1.5 mt-2" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-cloud-100 text-navy-900 inline-flex items-center gap-0.5"
+                      onClick={() => relayAlert(a, 'sms')}
+                    >
+                      <Phone className="w-3 h-3" /> SMS
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-cloud-100 text-navy-900 inline-flex items-center gap-0.5"
+                      onClick={() => relayAlert(a, 'wa')}
+                    >
+                      <MessageCircle className="w-3 h-3" /> WhatsApp
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-cloud-100 text-navy-900"
+                      onClick={() => relayAlert(a, 'ivr')}
+                    >
+                      IVR
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-cloud-100 text-navy-900 inline-flex items-center gap-0.5"
+                      onClick={() => relayAlert(a, 'share')}
+                    >
+                      <Share2 className="w-3 h-3" />
+                      {lang === 'hi' ? 'शेयर' : 'Share'}
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center pr-3 text-ink-400">
                   <ChevronRight className="w-4 h-4" />
@@ -365,10 +457,40 @@ export default function AlertsTab({
                           : 'Keep buffer in plans and monitor updates.'}
                     </p>
                   </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => relayAlert(open, 'sms')}
+                      className="py-2 rounded-xl border border-cloud-200 text-[12px] font-semibold"
+                    >
+                      SMS text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => relayAlert(open, 'wa')}
+                      className="py-2 rounded-xl border border-cloud-200 text-[12px] font-semibold"
+                    >
+                      WhatsApp
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => relayAlert(open, 'ivr')}
+                      className="py-2 rounded-xl border border-cloud-200 text-[12px] font-semibold"
+                    >
+                      {lang === 'hi' ? 'IVR कॉपी' : 'Copy IVR'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => relayAlert(open, 'share')}
+                      className="py-2 rounded-xl border border-cloud-200 text-[12px] font-semibold"
+                    >
+                      {lang === 'hi' ? 'शेयर' : 'Share'}
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setOpen(null)}
-                    className="mt-5 w-full py-2.5 rounded-xl bg-navy-900 text-white text-[14px] font-medium hover:bg-navy-700 pressable focus-ring"
+                    className="mt-3 w-full py-2.5 rounded-xl bg-navy-900 text-white text-[14px] font-medium hover:bg-navy-700 pressable focus-ring"
                   >
                     {lang === 'hi' ? 'बंद करें' : 'Close'}
                   </button>

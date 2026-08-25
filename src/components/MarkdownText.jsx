@@ -1,15 +1,15 @@
-/** Lightweight markdown: # headings, **bold**, bullets, line breaks */
+/** Lightweight markdown: # headings, **bold**, bullets, line breaks — airy spacing for chat */
 export default function MarkdownText({ text = '', className = '' }) {
   const lines = String(text).split('\n')
   return (
-    <div className={`space-y-1 ${className}`}>
+    <div className={`space-y-1.5 ${className}`}>
       {lines.map((line, i) => {
         const t = line.trimEnd()
-        if (t.trim() === '') return <div key={i} className="h-1.5" />
+        if (t.trim() === '') return <div key={i} className="h-2" />
 
         if (t.startsWith('## ')) {
           return (
-            <h3 key={i} className="text-[15px] font-semibold text-navy-900 pt-0.5 leading-snug">
+            <h3 key={i} className="text-[16px] font-semibold text-navy-900 pt-0.5 pb-1 leading-snug tracking-tight">
               {renderInline(t.slice(3))}
             </h3>
           )
@@ -18,7 +18,7 @@ export default function MarkdownText({ text = '', className = '' }) {
           return (
             <h4
               key={i}
-              className="text-[11px] font-bold uppercase tracking-wider text-sky-400 pt-1.5 pb-0.5"
+              className="text-[11px] font-bold uppercase tracking-wider text-sky-400 pt-2.5 pb-1 first:pt-0"
             >
               {renderInline(t.slice(4))}
             </h4>
@@ -27,23 +27,23 @@ export default function MarkdownText({ text = '', className = '' }) {
         if (/^[-•]\s+/.test(t.trim())) {
           const body = t.trim().replace(/^[-•]\s+/, '')
           return (
-            <div key={i} className="flex gap-2 text-[13.5px] leading-relaxed text-ink-800 pl-0.5">
-              <span className="text-sky-400 shrink-0 mt-[2px]">•</span>
-              <span>{renderInline(body)}</span>
+            <div key={i} className="flex gap-2.5 text-[14px] leading-relaxed text-ink-800 pl-0.5 py-0.5">
+              <span className="text-sky-400 shrink-0 mt-[3px]">•</span>
+              <span className="min-w-0">{renderInline(body)}</span>
             </div>
           )
         }
         if (/^\d+\.\s+/.test(t.trim())) {
           const m = t.trim().match(/^(\d+)\.\s+(.*)$/)
           return (
-            <div key={i} className="flex gap-2 text-[13.5px] leading-relaxed text-ink-800 pl-0.5">
+            <div key={i} className="flex gap-2.5 text-[14px] leading-relaxed text-ink-800 pl-0.5 py-0.5">
               <span className="text-sky-400 font-semibold shrink-0 tabular-nums">{m[1]}.</span>
-              <span>{renderInline(m[2])}</span>
+              <span className="min-w-0">{renderInline(m[2])}</span>
             </div>
           )
         }
         return (
-          <p key={i} className="text-[13.5px] leading-relaxed text-ink-800">
+          <p key={i} className="text-[14px] leading-relaxed text-ink-800">
             {renderInline(t)}
           </p>
         )

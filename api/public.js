@@ -180,8 +180,14 @@ export default async function handler(req, res) {
             method: 'GET',
             path: '/api/public',
             params: ['action=chat', 'q', 'lat', 'lon', 'name', 'lang'],
-            desc: 'Stateless NL weather answer for external agents',
+            desc: 'Stateless NL weather answer for external agents (deterministic tools)',
             example: `${origin}/api/public?action=chat&q=rain%20today&lat=26.45&lon=80.33&name=Kanpur&lang=en`,
+          },
+          hybrid_chat: {
+            method: 'POST',
+            path: '/api/chat',
+            desc: 'Hybrid: tools first; optional Gemini/OpenAI phrasing if server env key set',
+            honesty: `${origin}/HONESTY.txt`,
           },
           public_bundle: {
             method: 'GET',
@@ -197,10 +203,18 @@ export default async function handler(req, res) {
         },
         cors: '*',
         auth: 'none',
+        docs: {
+          honesty: origin + '/HONESTY.txt',
+          impact: origin + '/IMPACT_AND_SCALE.txt',
+          llms: origin + '/llms.txt',
+          sih: origin + '/sih.html',
+        },
         notes: [
           'All JSON. No login. Safe for automated evaluators and other AIs.',
-          'If a crawler cannot render SPA JS, use these /api/* endpoints + /llms.txt + /sih.html.',
-          'IMD official district polygons need IMD API key — colour philosophy applied on open models + GDACS.',
+          'Default AI = deterministic grounded NLU — not a private weather foundation model.',
+          'LLM only if GEMINI_API_KEY/OPENAI_API_KEY on server; still tool-grounded.',
+          'If a crawler cannot render SPA JS, use /api/* + /llms.txt + /sih.html + /HONESTY.txt.',
+          'IMD official district polygons need IMD API key — not claimed as integrated.',
         ],
         fetchedAt: Date.now(),
       })

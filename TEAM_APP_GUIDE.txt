@@ -1,0 +1,456 @@
+================================================================================
+  WeatherGPT — COMPLETE APP GUIDE FOR TEAM
+  (starting se ab tak kya-kya hai, kahan hai, kaise chalta hai)
+================================================================================
+  Product     : WeatherGPT — AI Weather Intelligence (India / SIH focus)
+  Status      : College internal 1st round SELECTED
+  Last update : 2026-08-25
+  Repo root   : weathergpt/
+  Deploy zip  : weathergpt-deploy.zip (workspace parent / build output)
+
+  Yeh file team ke liye hai — naye member ko pehle YEH padhni chahiye.
+  Fake features mat claim karna. Neeche "HONEST LIMITS" section zaroori hai.
+
+================================================================================
+1. ONE-LINE PRODUCT
+================================================================================
+  Mobile-first PWA jo LIVE weather + AI chat (Hindi/English) + alerts +
+  farm/travel/school decisions + climate trends + NWP model compare deta hai.
+  Numbers Open-Meteo / GDACS / flood se aate hain — invent nahi hote.
+
+  Principle: What is happening → Why it matters → What you should do
+
+================================================================================
+2. SIH FEATURE CHECKLIST (quick)
+================================================================================
+  [x] Real-time weather retrieval
+  [x] Natural language weather Q&A (chat + public API)
+  [x] NWP multi-model (GFS / ECMWF / ICON / blend via Open-Meteo) — not on-prem WRF
+  [x] Extreme alerts + early warning style UX + browser push (when permitted)
+  [x] Location-based forecast + advisories (cities + modes)
+  [x] Multilingual: English + Hindi (UI + NLU + voice)
+  [x] Climate / historical monthly trends (archive API)
+  [x] Voice: mic STT + Listen TTS on answers
+  [x] Public JSON APIs so other AIs/judges can test WITHOUT rendering React
+
+================================================================================
+3. HOW TO RUN (local + deploy)
+================================================================================
+  Prerequisites: Node.js 18+ , npm, Git Bash / terminal
+
+  --- Local frontend ---
+  cd weathergpt
+  rm -f postcss.config.js          # Tailwind v4 break karta hai yeh file
+  npm i
+  npm run dev                      # http://localhost:5173
+  npm run build
+  npm run preview
+
+  --- Full serverless APIs locally ---
+  npx vercel dev                   # /api/* real functions (climate, models, alerts…)
+  Note: plain `npm run dev` only proxies weather/geocode/aqi to Open-Meteo.
+        alerts/climate/models/public need Vercel functions OR client fallbacks.
+
+  --- Production deploy ---
+  npm i && npm run build
+  npx vercel login                 # pehli baar
+  npx vercel --prod
+  Phir HARD REFRESH (Ctrl+Shift+R). Purana Service Worker ho to:
+    DevTools → Application → Service Workers → Unregister → refresh
+
+  --- Important deploy gotchas ---
+  * Agar /api/* HTML return kare = SPA rewrite ne API kha liya, ya api/ missing
+  * vercel.json rewrites: /api/ ko index.html pe mat bhejo
+  * postcss.config.js extract ke baad DELETE
+  * Zip se deploy: weathergpt-deploy.zip extract → upar wale steps
+
+================================================================================
+4. REPO STRUCTURE (map)
+================================================================================
+  weathergpt/
+  ├── api/                    # Vercel Serverless backend (Node)
+  │   ├── weather.js          # Live forecast + live_alerts bundle
+  │   ├── alerts.js           # Multi-city GDACS + flood + meteo alerts
+  │   ├── climate.js          # Historical monthly trends (archive)
+  │   ├── models.js           # NWP multi-model compare
+  │   ├── aqi.js              # Air quality proxy
+  │   ├── geocode.js          # Place search proxy
+  │   └── public.js           # Open discovery + agent chat JSON
+  │
+  ├── public/                 # Static files (no build transform needed)
+  │   ├── llms.txt            # Instructions for external AIs
+  │   ├── openapi.json        # API map
+  │   ├── sih.html            # SIH matrix (works WITHOUT JavaScript)
+  │   ├── robots.txt
+  │   ├── sw-push-click.js    # Notification click → Alerts tab
+  │   ├── manifest / icons    # PWA
+  │   └── …
+  │
+  ├── src/
+  │   ├── main.jsx            # Entry: App OR DevicePreview lab
+  │   ├── App.jsx             # Shell: tabs, sidebar, weather load, monitor
+  │   ├── index.css           # Design tokens, sky, cards, desktop shell
+  │   ├── components/         # All UI screens
+  │   ├── services/           # Client logic (weather, AI, voice, …)
+  │   ├── hooks/              # useAlertMonitor
+  │   ├── data/               # cities.js, i18n.js
+  │   └── assets/
+  │
+  ├── vite.config.js          # React + Tailwind v4 + PWA + dev proxies
+  ├── vercel.json             # Build + api functions + SPA rewrite
+  ├── package.json
+  ├── TEAM_APP_GUIDE.txt      # <-- YEHI FILE
+  ├── README.md
+  ├── DEPLOY.md / DEPLOY_STEPS_HI.md
+  └── FIX_BUILD.txt
+
+================================================================================
+5. ARCHITECTURE (simple)
+================================================================================
+
+     [ User Phone / Laptop browser or PWA ]
+                    |
+                    v
+            React SPA (Vite)
+            - Dashboard, Chat, Alerts, Modes, Climate…
+            - localStorage prefs / chat history
+                    |
+         fetch JSON (same origin /api/*)
+                    |
+                    v
+         Vercel Serverless (api/*.js)
+                    |
+        +-----------+-----------+--------------+
+        |           |           |              |
+        v           v           v              v
+   Open-Meteo   Open-Meteo   GDACS        Open-Meteo
+   forecast     archive      events       Flood API
+   + multi-model
+
+  NO database yet (planned next). Identity = browser localStorage only.
+  Weather numbers always from live upstream (or short offline pack fallback).
+
+================================================================================
+6. FRONTEND — TABS & SCREENS
+================================================================================
+  Bottom nav (mobile) / Sidebar (desktop ≥1024px):
+
+  HOME (DashboardTab)
+    - Soft blue weather hero (temp, condition, metrics)
+    - Dark sheet: Today hourly / 5-day
+    - AI Brief: What's happening → Expect → Do (+ confidence)
+    - Alert strip, Today's decisions (Travel/School/Farm) + Why?
+    - AQI, Data & sources (real weather.sources only)
+    - LIVE / OFFLINE truth from weather.live
+
+  CHAT (ChatTab)
+    - NL questions Hindi/English
+    - Mic = speech-to-text (hi-IN / en-IN)
+    - Listen button = text-to-speech on assistant answers
+    - Intent routing in services/ai.js (rain, alert, farm, travel, school,
+      forecast, predict, climate, models, aviation-lite, …)
+    - Answers grounded on current weather pack + optional other city fetch
+    - Source line + confidence on each reply
+
+  ALERTS (AlertsTab)
+    - Here = current city weather.alerts
+    - Nearby cities = multi-city /api/alerts feed
+    - Push notifications card: enable / test / check now / monitor toggle
+    - Simulate RED (demo) also can fire OS notification
+    - Severity chips SEVERE/HIGH/MODERATE/LOW
+
+  MODES
+    - FarmTab   : soil, irrigation, spray window (from weather.agri)
+    - TravelTab : road risk, visibility, safer windows (insights)
+    - SchoolTab : heat / outdoor PE (insights)
+
+  MORE
+    - ForecastTab : hourly/daily charts + plain language + sources
+    - ClimateTab  : 12-month climate charts + NWP model comparison  [SIH]
+    - CitiesTab   : search + recent + curated India cities
+    - SettingsTab : lang, °C/°F, home city, notify prefs, permission, onboarding
+
+  OTHER UI
+    - Onboarding first visit
+    - About modal (product + external AI test links)
+    - ErrorBoundary (blank page se bachav)
+    - Device lab ONLY at ?preview=1  (M/T/D/F frames) — normal open pe NAHI
+
+================================================================================
+7. BACKEND APIs (team + external AI)
+================================================================================
+  Base: https://YOUR-DEPLOY-URL
+
+  GET /api/weather?lat=&lon=&tz=&name=
+      Live Open-Meteo forecast + live_alerts[] (GDACS, flood, model)
+
+  GET /api/alerts?lat=&lon=&name=
+  GET /api/alerts?points=lat,lon,Name|lat2,lon2,Name2&radiusKm=600
+      Multi-source alerts near one or many places
+
+  GET /api/climate?lat=&lon=&name=
+      Historical monthly temp/rain + 12m vs prior window deltas (archive)
+
+  GET /api/models?lat=&lon=&name=
+      GFS / ECMWF / ICON / best_match snapshot + ensemble spread
+
+  GET /api/aqi?lat=&lon=
+  GET /api/geocode?q=&count=&language=
+
+  GET /api/public
+      Discovery JSON for bots/judges (no auth, CORS *)
+
+  GET /api/public?action=chat&q=...&lat=&lon=&name=&lang=en
+      Stateless NL answer — other AIs call THIS if they cannot open SPA
+
+  GET /api/public?action=bundle&lat=&lon=&name=
+      Compact weather JSON
+
+  Static (no JS needed for humans/bots):
+      /llms.txt       /sih.html       /openapi.json       /robots.txt
+
+  CORS: Access-Control-Allow-Origin: * on APIs
+  Auth: none (demo). Rate limits = upstream free tiers — don't hammer.
+
+================================================================================
+8. CLIENT SERVICES (src/services/) — kya karta hai
+================================================================================
+  weather.js
+    - fetchWeather(city): proxy /api/weather → else direct Open-Meteo → offline pack
+    - parse pack: current, hourly, daily, agri, alerts merge, sources[], live flag
+    - injectSimulatedAlert() for judge demo RED
+    - clearCache()
+
+  ai.js
+    - chat(message, { weather, lang, fetchWeatherFor })
+    - Intent detect + rich markdown answers (HI/EN)
+    - welcomeMessage()
+    - Does NOT invent temperatures; uses wx pack
+
+  insights.js
+    - buildPrediction, buildTravelInsight, buildSchoolInsight, estimateVisibility
+
+  briefing.js
+    - buildStructuredBrief (What/Expect/Do)
+    - buildDailyBriefing + shareBriefing (Web Share / clipboard)
+
+  aqi.js          - Open-Meteo Air Quality (+ /api/aqi fallback)
+  geocode.js      - place resolve + aliases (Noida etc.)
+  climate.js      - client fetchClimate + fetchModels
+  notifications.js
+    - permission, show notification, multi-city watch list, fetchLiveAlertsFeed
+    - dedupe keys in localStorage (no spam)
+  voice.js        - TTS speak/stop + plain text strip
+  storage.js      - prefs, onboarding, chat history keys
+
+  hooks/useAlertMonitor.js
+    - Poll ~every 3 min when notifyAlerts on
+    - Seed seen on first fetch; later only NEW alerts notify
+
+================================================================================
+9. DATA & STATE
+================================================================================
+  Cities: src/data/cities.js (curated IN cities + dynamic registerCity from search)
+  i18n:   src/data/i18n.js (en + hi strings)
+
+  localStorage keys (approx):
+    wgpt_prefs_v2              lang, units, homeCityId, notifyAlerts, notifyMinSeverity…
+    weathergpt_recent_cities
+    wgpt_chat_history_v1
+    wgpt_onboarded_v1
+    wgpt_alert_seen_v1         notification dedupe
+    wgpt_alert_watch_v1        optional watch city ids
+    wgpt_device_preview_mode_v2  only for ?preview=1 lab
+
+  NO server DB yet. Next architecture discussion: Postgres for devices,
+  watch_locations, alert_events (see team notes / future plan).
+
+================================================================================
+10. NOTIFICATIONS — kaise kaam karti hain
+================================================================================
+  1) User Alerts tab → Enable notifications → browser Allow
+  2) Monitor on (prefs.notifyAlerts)
+  3) useAlertMonitor polls /api/alerts for home + metros (Kanpur, Delhi, …)
+  4) New alert notifyKey not in seen set → Notification API / SW showNotification
+  5) Click notification → /?tab=alerts (sw-push-click.js)
+
+  Limits:
+    - Needs HTTPS + permission
+    - Works best when tab/PWA available; full FCM when app killed = future
+    - First poll seeds seen (no backlog spam)
+
+================================================================================
+11. DESIGN / UI NOTES
+================================================================================
+  - Hybrid visual: bright blue sky hero + soft 3D WeatherIcon + dark bottom sheet
+    (user mock) PLUS product cards (AI brief, Why decisions)
+  - Desktop: real sidebar, not stretched phone
+  - Device M/T/D/F bar ONLY at ?preview=1 (lab). Normal phone/laptop = clean App
+  - index.css: sky-*, sheet-dark, hero-soft, sev-*, live-dot, app-shell
+
+================================================================================
+12. IMPORTANT BUG FIXES ALREADY LEARNED (mat repeat)
+================================================================================
+  * Blank white page: NEVER call React hooks after conditional return
+    (DashboardTab weather null guard — hooks pehle)
+  * ErrorBoundary wraps App in main.jsx
+  * /api returning index.html = treat as failure (weather.js checks)
+  * Noida speech/typo needs alias (cities + geocode)
+  * postcss.config.js breaks Tailwind v4 build — delete on extract
+  * Don't naively string-replace JSX closing tags (breaks nested components)
+  * Device preview bar must not show on every visit (only ?preview=1)
+
+================================================================================
+13. HOW OTHER AIs / JUDGES SHOULD TEST (copy-paste)
+================================================================================
+  "Do not rely on rendering the React SPA. Fetch:
+     1) /api/public
+     2) /llms.txt
+     3) /sih.html
+     4) /api/public?action=chat&q=Will%20it%20rain%20today&lat=26.45&lon=80.33&name=Kanpur
+     5) /api/alerts?lat=26.45&lon=80.33&name=Kanpur
+     6) /api/climate?lat=26.45&lon=80.33&name=Kanpur
+     7) /api/models?lat=26.45&lon=80.33&name=Kanpur
+   Score against SIH matrix on /sih.html."
+
+  Sample coords:
+    Kanpur  26.4499, 80.3319
+    Delhi   28.6139, 77.209
+    Mumbai  19.076,  72.8777
+
+================================================================================
+14. HONEST LIMITS (judges ke saamne clear raho)
+================================================================================
+  - Official IMD district warning polygons: need IMD API key/terms — NOT integrated
+    (we use IMD colour philosophy on open models + GDACS + flood)
+  - Not running local WRF supercomputer nest — cloud multi-model NWP via Open-Meteo
+  - Climate = reanalysis trends, not official 30-year IMD normals product
+  - Aviation answers = lite educational assist, NOT METAR/TAF operational release
+  - Multilingual production depth = English + Hindi (more Indic = i18n packs later)
+  - True push when phone fully killed needs FCM/APNs + backend — partial today
+  - No user accounts / no Postgres yet (planned split + DB phase)
+
+================================================================================
+15. TEAM ROLES — kaun kya padhe
+================================================================================
+  Frontend dev:
+    src/App.jsx, components/*, index.css, hooks/*
+
+  Backend / API dev:
+    api/*, vite proxy section, vercel.json
+
+  AI / content:
+    services/ai.js, insights.js, briefing.js, data/i18n.js
+
+  Demo / deploy owner:
+    DEPLOY*.md, vercel, hard refresh, /sih.html, simulate alert path
+
+  Pitch / SIH docs:
+    public/sih.html, public/llms.txt, THIS FILE
+
+================================================================================
+16. DEMO FLOW (2–3 minutes) — practice this
+================================================================================
+  1) Open deployed HTTPS URL (LIVE badge on)
+  2) Home: show temp, AI Brief What→Expect→Do, decision Why?
+  3) Chat: Hindi question "aaj baarish?" + Listen TTS
+  4) Alerts: Nearby cities + Enable notification + Send test
+     (optional) Simulate RED
+  5) More → Climate: 12m chart + GFS/ECMWF row
+  6) About → show /api/public and /sih.html for "other AI can test"
+  7) Optional: ?preview=1 only if showing responsive lab
+
+================================================================================
+17. NEXT ARCHITECTURE (discussed, NOT built yet)
+================================================================================
+  Goal: frontend/backend clearer split + DATABASE
+
+  Suggested:
+    apps/web     → current React
+    apps/api     → Node or FastAPI
+    Postgres (Neon/Supabase):
+      devices | watch_locations | alert_events | optional chat_sessions
+
+  Do NOT rewrite everything overnight. Phase:
+    A) folder split + VITE_API_URL
+    B) DB watch list + alert history
+    C) cron poll worker + optional FCM
+
+  Live weather still from meteorological APIs — DB for user/alert state.
+
+================================================================================
+18. FILE QUICK INDEX (find feature fast)
+================================================================================
+  Feature                    Primary files
+  -------------------------  ----------------------------------------------
+  App shell / nav            src/App.jsx
+  Home dashboard             src/components/DashboardTab.jsx
+  Chat + voice UI            src/components/ChatTab.jsx, services/voice.js
+  AI brain                   src/services/ai.js
+  Weather fetch/parse        src/services/weather.js, api/weather.js
+  Alerts UI + push UX        src/components/AlertsTab.jsx
+  Alert poller               src/hooks/useAlertMonitor.js
+  Notifications core         src/services/notifications.js
+  Farm / Travel / School     components/*Tab + services/insights.js
+  Forecast charts            src/components/ForecastTab.jsx
+  Climate + NWP UI           src/components/ClimateTab.jsx, services/climate.js
+  Climate API                api/climate.js
+  Models API                 api/models.js
+  Alerts API                 api/alerts.js
+  Public agent API           api/public.js
+  Cities / geocode           data/cities.js, services/geocode.js, api/geocode.js
+  Prefs storage              src/services/storage.js
+  Styles                     src/index.css
+  PWA                        vite.config.js, public/manifest, sw-*
+  External AI docs           public/llms.txt, sih.html, openapi.json
+  Device lab                 components/DevicePreview.jsx, main.jsx (?preview=1)
+
+================================================================================
+19. COMMAND CHEAT SHEET
+================================================================================
+  npm i
+  npm run dev
+  npm run build
+  npm run preview
+  npx vercel dev
+  npx vercel --prod
+
+  rm -f postcss.config.js    # after zip extract if present
+
+================================================================================
+20. CONTACT POINTS INSIDE REPO
+================================================================================
+  Human deploy Hindi steps : DEPLOY_STEPS_HI.md
+  English deploy           : DEPLOY.md
+  Build fix notes          : FIX_BUILD.txt
+  Short README             : README.md
+  This full team brain     : TEAM_APP_GUIDE.txt   ← YOU ARE HERE
+
+================================================================================
+  Rule for whole team:
+  1) Working demo > perfect architecture talk
+  2) No mock weather pretending to be LIVE
+  3) No fake sources / fake IMD official bulletins
+  4) Before national: hard-refresh test on real phone + laptop every deploy
+================================================================================
+
+
+================================================================================
+21. ROUND-2 HONESTY UPDATE (2026-08-25)
+================================================================================
+  Critical feedback addressed:
+  - AI is DEFAULT deterministic grounded NLU (ai.js), NOT a private weather LLM.
+  - Optional hybrid: POST /api/chat with GEMINI_API_KEY or OPENAI_API_KEY
+    (tools first; LLM phrases only). GET /api/chat shows if LLM configured.
+  - README no longer claims Marathi or live Supabase/SMS gateway.
+  - Rural: Alerts tab SMS / WhatsApp / IVR script / Share (relay, not bulk gateway).
+  - Impact model: public/IMPACT_AND_SCALE.txt (cost math labelled as estimates).
+  - Honesty sheet: public/HONESTY.txt — judges + other AIs.
+  - Pitch: say "grounded weather copilot" ; explain upstream NWP accuracy separately.
+
+  Files:
+    README.md, public/HONESTY.txt, public/IMPACT_AND_SCALE.txt
+    api/chat.js, src/services/outreach.js, AlertsTab relay buttons
+    App.jsx tries /api/chat then falls back to on-device ai.js
+
+END OF FILE

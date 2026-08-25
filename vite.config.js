@@ -19,6 +19,8 @@ export default defineConfig({
         'robots.txt',
         'openapi.json',
         'sih.html',
+        'HONESTY.txt',
+        'IMPACT_AND_SCALE.txt',
       ],
       manifest: {
         name: 'WeatherGPT',

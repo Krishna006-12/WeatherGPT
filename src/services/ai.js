@@ -111,30 +111,39 @@ function detectLang(text) {
 }
 
 function extractCityLocal(text, fallback) {
-  const lower = text.toLowerCase()
+  const lower = String(text || '').toLowerCase()
 
-  // Alias scan first (nodia, bangalore, …)
-  for (const [alias, canon] of Object.entries(CITY_ALIASES)) {
-    const re = new RegExp(`(?:^|[^a-z])${alias.replace(/\s+/g, '\\s+')}(?:[^a-z]|$)`, 'i')
+  // Alias scan first (nodia, bangalore, …) — longest alias first
+  const aliasEntries = Object.entries(CITY_ALIASES).sort((a, b) => b[0].length - a[0].length)
+  for (const [alias, canon] of aliasEntries) {
+    const re = new RegExp(`(?:^|[^a-z\\u0900-\\u097f])${alias.replace(/\s+/g, '\\s+')}(?:[^a-z\\u0900-\\u097f]|$)`, 'i')
     if (re.test(lower)) {
-      const hit = findCityLocal(canon) || CITIES[canon]
+      const hit = findCityLocal(canon) || CITIES[canon] || CITIES[String(canon).toLowerCase()]
       if (hit) return hit
     }
   }
 
+  // Explicit id token (noida, kanpur, …)
   const pool = allKnownCities().slice().sort((a, b) => b.name.length - a.name.length)
   for (const c of pool) {
     const name = c.name.toLowerCase()
     // word-boundary style match — avoid "now" inside other words matching wrongly
-    const nameRe = new RegExp(`(?:^|[^a-z])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^a-z]|$)`, 'i')
-    if (nameRe.test(lower) || (c.name_hi && text.includes(c.name_hi)) || lower.includes(c.id)) {
+    const nameRe = new RegExp(
+      `(?:^|[^a-z\\u0900-\\u097f])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^a-z\\u0900-\\u097f]|$)`,
+      'i'
+    )
+    const idRe = new RegExp(
+      `(?:^|[^a-z])${String(c.id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^a-z]|$)`,
+      'i'
+    )
+    if (nameRe.test(lower) || idRe.test(lower) || (c.name_hi && text.includes(c.name_hi))) {
       return c
     }
   }
   if (/new\s*delhi|dilli|दिल्ली/.test(lower) || /दिल्ली/.test(text)) return CITIES.delhi
   if (/bangalore|बेंगल/.test(lower)) return CITIES.bengaluru
   if (/bombay|मुंबई/.test(lower) || /मुंबई/.test(text)) return CITIES.mumbai
-  if (/नोएडा|नॉएडा/.test(text)) return CITIES.noida
+  if (/नोएडा|नॉएडा|noida|nodia/.test(lower) || /नोएडा|नॉएडा/.test(text)) return CITIES.noida
   return fallback
 }
 
@@ -1053,4 +1062,9 @@ export function welcomeMessage(wx, lang) {
   }
 }
 
-export { detectIntent, findCityLocal as findCity, wmoInfo }
+/** Public helper: which city does this message refer to? (null = stay on current) */
+export async function resolveMentionedCity(message, fallback = null) {
+  return extractCity(message, fallback)
+}
+
+export { detectIntent, findCityLocal as findCity, wmoInfo, extractCityLocal }

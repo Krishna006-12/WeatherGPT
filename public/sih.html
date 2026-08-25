@@ -61,8 +61,8 @@
       <tr>
         <td>2</td>
         <td>Natural language querying</td>
-        <td class="ok">DONE</td>
-        <td>Chat tab (HI/EN NLU) · <code>/api/public?action=chat</code></td>
+        <td class="ok">DONE*</td>
+        <td>Grounded HI/EN NLU always · optional tool-first LLM via <code>POST /api/chat</code> if server key set · <code>/HONESTY.txt</code></td>
       </tr>
       <tr>
         <td>3</td>
@@ -86,7 +86,7 @@
         <td>6</td>
         <td>Multilingual (Indian languages)</td>
         <td class="ok">DONE*</td>
-        <td>Full UI + NLU + voice in <strong>English + Hindi</strong>. *More Indic languages = Phase-2 i18n packs.</td>
+        <td><strong>English + Hindi only</strong> (UI + NLU + voice). Marathi not shipped. *More Indic = i18n packs.</td>
       </tr>
       <tr>
         <td>7</td>
@@ -109,7 +109,7 @@
     <tbody>
       <tr><td>Mobile conversational AI platform</td><td class="ok">DONE</td><td>PWA + responsive + chat</td></tr>
       <tr><td>Backend met databases / APIs</td><td class="ok">DONE</td><td>Vercel serverless proxies to Open-Meteo, GDACS, flood, archive</td></tr>
-      <tr><td>AI/LLM query understanding</td><td class="ok">DONE*</td><td>Deterministic grounded NLU + structured briefs (no hallucination of live fields). Optional external LLM later.</td></tr>
+      <tr><td>AI/LLM query understanding</td><td class="ok">DONE*</td><td>Default = deterministic grounded NLU. Optional Gemini/OpenAI phrasing on tool JSON only (<code>/api/chat</code>). See <a href="/HONESTY.txt">HONESTY.txt</a>.</td></tr>
       <tr><td>Real-time data ingestion architecture</td><td class="ok">DONE</td><td>Poll + live proxy + alert monitor ~3 min · NetworkOnly API caching</td></tr>
     </tbody>
   </table>
@@ -119,7 +119,8 @@
     <li><strong>Farmers</strong> — Farm mode irrigation / spray / soil</li>
     <li><strong>Travel / urban</strong> — Travel risk, visibility, AQI</li>
     <li><strong>Schools</strong> — heat / outdoor PE advisories</li>
-    <li><strong>Flood / disaster</strong> — GDACS + flood discharge + push</li>
+    <li><strong>Flood / disaster</strong> — GDACS + flood discharge + push + SMS/WhatsApp/IVR relay text</li>
+    <li><strong>Impact model</strong> — transparent cost/scale notes in <a href="/IMPACT_AND_SCALE.txt">IMPACT_AND_SCALE.txt</a></li>
     <li><strong>Aviation (lite)</strong> — educational snapshot, not METAR release</li>
     <li><strong>Researchers</strong> — climate monthly series + model spread</li>
   </ul>

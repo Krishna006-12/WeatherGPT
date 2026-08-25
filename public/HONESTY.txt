@@ -1,0 +1,95 @@
+WeatherGPT — HONESTY SHEET (Round-2 / technical judges)
+======================================================
+Last updated: 2026-08-25
+Purpose: Stop overclaim. One page judges can open without the SPA.
+
+1) IS THERE A REAL LLM?
+-----------------------
+DEFAULT: NO network call to GPT/Gemini/Claude.
+  - src/services/ai.js = deterministic intent router + templates
+  - Grounded on the live weather JSON pack (temp, POP, alerts, agri fields)
+  - Strength: controllable, fast, source-attributed, demo-stable
+  - Weakness: not a learned language model; limited open-ended chit-chat
+
+OPTIONAL LLM (only if operator sets server secret):
+  - api/chat.js
+  - Env: GEMINI_API_KEY and/or OPENAI_API_KEY
+  - Flow: tools fetch weather/alerts → LLM sees ONLY that JSON → phrasing
+  - If key missing → same deterministic answer as ai.js (no fake “AI”)
+  - We do NOT send the model permission to invent observations
+
+If asked "training data / model accuracy for rainfall":
+  → Answer about Open-Meteo / NWP upstream, not about fine-tuning WeatherGPT.
+
+2) LANGUAGES
+------------
+Implemented: English, Hindi (UI + NLU + STT/TTS).
+NOT implemented: Marathi or other Indic UIs (roadmap only).
+Any older slide saying EN/HI/MR is WRONG — use EN/HI only.
+
+3) DATABASE / SUPABASE
+----------------------
+Not wired in the shipped app.
+Prefs, chat history, notification dedupe = browser localStorage.
+Postgres/Supabase schema may appear in future docs as PLAN, not as live product.
+Do not tell judges "we use Supabase" unless the env + client are connected.
+
+4) ALERTS — WHAT IS LIVE
+------------------------
+LIVE sources used:
+  - GDACS multi-hazard (distance-filtered)
+  - Open-Meteo Flood (river discharge signal)
+  - Open-Meteo meteo thresholds (colour philosophy similar to IMD UX)
+NOT live:
+  - Official IMD district warning polygons (need IMD API key / terms)
+  - Guaranteed SMS to every feature phone in a district
+
+Browser/PWA notifications: implemented (permission + poll + dedupe).
+True push when phone is fully off: needs FCM/APNs + backend (planned).
+
+5) RURAL / NO-SMARTPHONE REACH
+------------------------------
+Implemented in app:
+  - SMS-ready alert text + sms: link (user's own SMS app)
+  - WhatsApp share of alert brief
+  - IVR script text the operator/ASHA/farmer producer co. can read aloud
+  - Hindi voice output (TTS) for low-literacy smartphone users
+NOT implemented as a paid gateway:
+  - Bulk MSG91/Twilio DLT campaign from our servers
+Documented scale path: IMPACT_AND_SCALE.txt
+
+6) NWP / "GFS WRF"
+------------------
+Implemented: multi-model compare via Open-Meteo (GFS, ECMWF, ICON, best_match).
+NOT implemented: self-hosted WRF nest on our GPU cluster.
+
+7) CLIMATE HISTORY
+------------------
+Open-Meteo Archive (reanalysis-class) monthly trends.
+NOT official IMD 30-year climate normals product.
+
+8) AVIATION / MARINE
+--------------------
+Lite educational snapshot only. Not METAR/TAF or coastal bulletin authority.
+
+9) NAME "WeatherGPT"
+--------------------
+Brand for assistant-style UX. Without API keys it is NOT ChatGPT under the hood.
+Prefer pitch line: "Grounded weather copilot" or "AI-assisted decision support".
+
+10) SAFE PITCH LINES
+--------------------
+YES:
+  - Grounded bilingual assistant on live open meteorological feeds
+  - Explainable farm/travel/school decisions
+  - Multi-source alerts + optional LLM phrasing
+  - Public API for evaluators (/api/public, /llms.txt, /sih.html)
+
+NO:
+  - "We trained our own foundation weather model"
+  - "We have official IMD API fully integrated"
+  - "We send SMS to all farmers automatically today"
+  - "Full Marathi app"
+  - "Supabase production backend is live" (unless wired)
+
+Contact for team internal detail: TEAM_APP_GUIDE.txt in repo root.
