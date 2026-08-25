@@ -1,0 +1,7 @@
+https://weather-filcn993y-phantom-c715.vercel.app/
+
+PPT tip: use weathergpt-qr-ppt-dark.png on dark slides,
+weathergpt-qr-ppt-card.png on white slides,
+weathergpt-qr-print-hires.png if printing posters.
+
+If you get a stable production domain later, regenerate QR.

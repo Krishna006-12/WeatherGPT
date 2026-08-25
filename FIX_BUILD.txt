@@ -1,0 +1,15 @@
+Agar build mein autoprefixer / postcss error aaye:
+
+1. Ye purani files DELETE karo (agar hain):
+   - postcss.config.js
+   - postcss.config.cjs
+   - tailwind.config.js
+   - tailwind.config.cjs
+
+2. Git Bash mein (weathergpt folder ke andar):
+   rm -f postcss.config.js postcss.config.cjs tailwind.config.js tailwind.config.cjs
+   rm -rf node_modules dist
+   npm install
+   npm run build
+
+Tailwind v4 + @tailwindcss/vite ko postcss.config.js KI ZAROORAT NAHI.

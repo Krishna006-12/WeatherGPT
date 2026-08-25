@@ -1,0 +1,93 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "WeatherGPT Public API",
+    "version": "2.1.0",
+    "description": "SIH-ready live weather, alerts, climate trends, NWP models, and agent chat. No auth. CORS *."
+  },
+  "servers": [{ "url": "/" }],
+  "paths": {
+    "/api/public": {
+      "get": {
+        "summary": "Discovery, health, agent chat, bundle",
+        "parameters": [
+          { "name": "action", "in": "query", "schema": { "type": "string", "enum": ["discover", "health", "chat", "bundle"] } },
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "lat", "in": "query", "schema": { "type": "number" } },
+          { "name": "lon", "in": "query", "schema": { "type": "number" } },
+          { "name": "name", "in": "query", "schema": { "type": "string" } },
+          { "name": "lang", "in": "query", "schema": { "type": "string", "enum": ["en", "hi"] } }
+        ],
+        "responses": { "200": { "description": "JSON" } }
+      }
+    },
+    "/api/weather": {
+      "get": {
+        "summary": "Live forecast + live_alerts",
+        "parameters": [
+          { "name": "lat", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "lon", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "tz", "in": "query", "schema": { "type": "string" } },
+          { "name": "name", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Forecast JSON + live_alerts" } }
+      }
+    },
+    "/api/alerts": {
+      "get": {
+        "summary": "Multi-source live alerts near point(s)",
+        "parameters": [
+          { "name": "lat", "in": "query", "schema": { "type": "number" } },
+          { "name": "lon", "in": "query", "schema": { "type": "number" } },
+          { "name": "name", "in": "query", "schema": { "type": "string" } },
+          { "name": "points", "in": "query", "schema": { "type": "string" }, "description": "lat,lon,Name|..." },
+          { "name": "radiusKm", "in": "query", "schema": { "type": "number" } }
+        ],
+        "responses": { "200": { "description": "alerts[]" } }
+      }
+    },
+    "/api/climate": {
+      "get": {
+        "summary": "Historical climate monthly trends",
+        "parameters": [
+          { "name": "lat", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "lon", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "name", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "monthly + summary" } }
+      }
+    },
+    "/api/models": {
+      "get": {
+        "summary": "NWP multi-model comparison",
+        "parameters": [
+          { "name": "lat", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "lon", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "name", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "models[] + ensemble" } }
+      }
+    },
+    "/api/aqi": {
+      "get": {
+        "summary": "Air quality",
+        "parameters": [
+          { "name": "lat", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "lon", "in": "query", "required": true, "schema": { "type": "number" } }
+        ],
+        "responses": { "200": { "description": "AQI JSON" } }
+      }
+    },
+    "/api/geocode": {
+      "get": {
+        "summary": "Place search",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "count", "in": "query", "schema": { "type": "string" } },
+          { "name": "language", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Geocoding results" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,72 @@
+# WeatherGPT — SIH AI Weather Intelligence (India)
+
+> Mobile-first conversational weather platform with live APIs.
+> External AIs and evaluators: prefer JSON endpoints below (SPA JS not required).
+
+## Primary URLs
+- App: /
+- Machine discovery: /api/public
+- This file: /llms.txt
+- OpenAPI: /openapi.json
+- SIH checklist (static HTML): /sih.html
+- robots: /robots.txt
+
+## CORS
+All /api/* endpoints send Access-Control-Allow-Origin: *
+
+## Core APIs (GET, JSON, no auth)
+
+### Live weather + bundled alerts
+GET /api/weather?lat={lat}&lon={lon}&tz=Asia/Kolkata&name={name}
+Returns Open-Meteo forecast fields plus live_alerts[] (GDACS, flood model, meteo thresholds).
+
+### Multi-city / nearby live alerts
+GET /api/alerts?lat={lat}&lon={lon}&name={name}
+GET /api/alerts?points={lat},{lon},{Name}|{lat2},{lon2},{Name2}&radiusKm=600
+
+### Historical climate trends (archive reanalysis)
+GET /api/climate?lat={lat}&lon={lon}&name={name}
+Monthly means + 12m vs prior-12m rain/temp deltas (Open-Meteo Archive / ERA5-class).
+
+### NWP multi-model compare (GFS / ECMWF / ICON / blend)
+GET /api/models?lat={lat}&lon={lon}&name={name}
+
+### Air quality
+GET /api/aqi?lat={lat}&lon={lon}
+
+### Geocode
+GET /api/geocode?q={place}&count=10&language=en
+
+### Public NL chat for agents (no browser)
+GET /api/public?action=chat&q={question}&lat={lat}&lon={lon}&name={name}&lang=en
+GET /api/public?action=bundle&lat={lat}&lon={lon}&name={name}
+GET /api/public?action=discover
+
+## Sample coordinates
+- Kanpur: 26.4499, 80.3319
+- Delhi: 28.6139, 77.209
+- Mumbai: 19.076, 72.8777
+
+## Product capabilities (SIH mapping)
+1. Real-time weather retrieval — /api/weather
+2. Natural language queries — in-app Chat + /api/public?action=chat
+3. NWP models (GFS/ECMWF/ICON via Open-Meteo) — /api/models + Climate tab
+4. Extreme alerts / early warning — /api/alerts + push notifications
+5. Location-based advisories — Farm / Travel / School modes
+6. Multilingual — English + Hindi (UI + NLU + voice STT/TTS)
+7. Climate / historical analysis — /api/climate + Climate tab
+8. Voice — mic STT + Listen TTS on answers
+
+## Honest limits
+- Not a substitute for official IMD district polygon bulletins (key/terms).
+- Not a full on-prem WRF nest; cloud multi-model ensemble instead.
+- Browser push needs permission; full FCM offline push is optional Phase-2.
+- Aviation answers are lite assist only — not METAR/TAF operational release.
+
+## How other AIs should test
+1. GET /api/public
+2. GET /api/public?action=chat&q=Will%20it%20rain%20today&lat=26.45&lon=80.33&name=Kanpur
+3. GET /api/alerts?lat=26.45&lon=80.33&name=Kanpur
+4. GET /api/climate?lat=26.45&lon=80.33&name=Kanpur
+5. GET /api/models?lat=26.45&lon=80.33&name=Kanpur
+6. Read /sih.html for human-readable evaluation matrix

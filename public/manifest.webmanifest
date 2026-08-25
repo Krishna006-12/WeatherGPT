@@ -1,0 +1,24 @@
+{
+  "name": "WeatherGPT",
+  "short_name": "WeatherGPT",
+  "description": "AI weather intelligence for India — chat, alerts, farm, travel, school",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#06101f",
+  "theme_color": "#0B1F3A",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
