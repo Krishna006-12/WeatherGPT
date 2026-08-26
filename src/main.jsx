@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.jsx'
 import DevicePreview, { isEmbedMode, shouldUseDevicePreview } from './components/DevicePreview.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import { Analytics } from '@vercel/analytics/react'
 
 const rootEl = document.getElementById('root')
 if (!rootEl) {
@@ -19,6 +20,7 @@ if (!rootEl) {
     <StrictMode>
       <ErrorBoundary>
         <Root />
+        <Analytics />
       </ErrorBoundary>
     </StrictMode>
   )
