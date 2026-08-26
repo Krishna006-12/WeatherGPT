@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import { translations } from './lib/translations.js'
 import {
   DEFAULT_INDIAN_CITIES,
@@ -841,6 +842,9 @@ export default function App() {
       {showSihMatrix && (
         <SihMatrixModal onClose={() => setShowSihMatrix(false)} />
       )}
+
+      {/* Vercel Speed Insights */}
+      <SpeedInsights />
     </div>
   )
 }
