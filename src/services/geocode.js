@@ -11,6 +11,32 @@ import {
   findCityLocal,
   normalizePlaceQuery,
 } from '../data/cities'
+import { isCropToken, detectCrop, allCropStopwords } from '../data/crops'
+
+/** Blocklist: crop names must never become geocode hits / Recent cities */
+const CROP_QUERY_RE = (() => {
+  const words = allCropStopwords()
+    .filter((w) => w && w.length >= 3)
+    .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  // whole-query match for bare crop ("wheat", "potato", "gehun")
+  return new RegExp(`^(?:${words.join('|')})$`, 'i')
+})()
+
+function isCropOnlyQuery(query) {
+  const q = String(query || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[?.!,;:]+$/g, '')
+  if (!q) return false
+  if (CROP_QUERY_RE.test(q)) return true
+  if (isCropToken(q)) return true
+  // single-token or "wheat crop" / "potato farming" style
+  const parts = q.split(/\s+/).filter(Boolean)
+  if (parts.length <= 3 && parts.every((p) => isCropToken(p) || /^(crop|farming|farm|cultivation|fasal|फसल|advice|advisory|sowing|harvest)$/i.test(p))) {
+    return !!detectCrop(q)
+  }
+  return false
+}
 
 const GEO_DIRECT = 'https://geocoding-api.open-meteo.com/v1/search'
 const searchCache = new Map()
@@ -459,10 +485,14 @@ export async function searchCities(query, { count = 8, indiaOnly = false } = {})
   const raw = (query || '').trim()
   if (raw.length < 2) return []
 
+  // Farmer crop names are not cities — empty results (no "Wheat US")
+  if (isCropOnlyQuery(raw)) return []
+
   const q = normalizePlaceQuery(raw) || raw
   if (q.length < 2) return []
+  if (isCropOnlyQuery(q)) return []
 
-  const cacheKey = `v3|${q.toLowerCase()}|${count}|${indiaOnly}`
+  const cacheKey = `v4|${q.toLowerCase()}|${count}|${indiaOnly}`
   const hit = searchCache.get(cacheKey)
   if (hit && Date.now() - hit.at < SEARCH_TTL) return hit.results
 
@@ -487,6 +517,14 @@ export async function searchCities(query, { count = 8, indiaOnly = false } = {})
     }
 
     results = filterNoise(results, ql)
+    // Drop geocode hits whose primary name is a crop token (Wheat, Potato Point, …)
+    results = results.filter((c) => {
+      const n = (c.name || '').toLowerCase().trim()
+      const first = n.split(/\s+/)[0]
+      if (isCropToken(n) || isCropToken(first)) return false
+      if (detectCrop(n) && (c.population || 0) < 50000) return false
+      return true
+    })
 
     // Merge curated locals (only if they match query well)
     const merged = []
@@ -520,8 +558,10 @@ export async function searchCities(query, { count = 8, indiaOnly = false } = {})
  */
 export async function resolveCity(query) {
   if (!query) return null
+  if (isCropOnlyQuery(query)) return null
   const cleaned = normalizePlaceQuery(query)
   if (!cleaned) return null
+  if (isCropOnlyQuery(cleaned)) return null
 
   const local = findCityLocal(cleaned) || findCityLocal(query)
   if (local) return local

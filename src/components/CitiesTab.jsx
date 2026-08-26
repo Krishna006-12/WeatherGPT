@@ -50,7 +50,7 @@ export default function CitiesTab({ lang, cityId, onSelect, weatherMap, recentCi
       } finally {
         if (myReq === reqId.current) setSearching(false)
       }
-    }, 280)
+    }, 400)
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -97,13 +97,13 @@ export default function CitiesTab({ lang, cityId, onSelect, weatherMap, recentCi
   }
 
   return (
-    <div className="h-full overflow-y-auto scroll-thin scroll-dark px-3 sm:px-4 py-4">
+    <div className="h-full overflow-y-auto scroll-thin scroll-dark page-pad py-4">
       <div className="flex gap-2 mb-2">
-        <div className="flex-1 flex items-center gap-2 bg-white border border-cloud-200 rounded-2xl px-3 py-2.5 focus-within:border-sky-400/70 focus-within:shadow-md focus-within:shadow-sky-400/10 transition shadow-sm">
+        <div className="flex-1 flex items-center gap-2 input-glass px-3 py-2.5 text-white">
           {searching ? (
             <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
           ) : (
-            <Search className="w-4 h-4 text-ink-400 shrink-0" />
+            <Search className="w-4 h-4 text-white/40 shrink-0" />
           )}
           <input
             value={q}
@@ -113,28 +113,39 @@ export default function CitiesTab({ lang, cityId, onSelect, weatherMap, recentCi
                 ? 'कोई भी शहर — दुबई, पेरिस, आगरा…'
                 : 'Any city — Dubai, Paris, Agra…'
             }
-            className="flex-1 text-[14px] outline-none bg-transparent min-w-0"
+            className="flex-1 text-[14px] outline-none bg-transparent min-w-0 placeholder:text-white/35"
             autoComplete="off"
             autoCorrect="off"
+            aria-label={lang === 'hi' ? 'शहर खोजें' : 'Search city'}
           />
           {q && (
-            <button type="button" onClick={() => setQ('')} className="text-ink-400 hover:text-ink-700 p-0.5">
+            <button
+              type="button"
+              onClick={() => setQ('')}
+              className="text-white/40 hover:text-white/70 p-0.5 focus-ring rounded"
+              aria-label="Clear"
+            >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
         <button
+          type="button"
           onClick={useGeo}
           disabled={gpsLoading}
-          className="shrink-0 px-3 rounded-2xl bg-navy-900 text-white text-[12px] font-medium flex items-center gap-1 hover:bg-navy-700 disabled:opacity-60 pressable"
-          title="Use current location"
+          className="shrink-0 px-3.5 rounded-2xl bg-sky-400/90 hover:bg-sky-400 text-navy-950 text-[12px] font-semibold flex items-center gap-1.5 disabled:opacity-60 pressable btn-glass focus-ring border border-white/10 shadow-md shadow-sky-400/20 transition-all duration-200"
+          title={lang === 'hi' ? 'मेरी लोकेशन' : 'Use my location'}
         >
-          {gpsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Navigation className="w-3.5 h-3.5" />}
-          GPS
+          {gpsLoading ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Navigation className="w-3.5 h-3.5" />
+          )}
+          {lang === 'hi' ? 'GPS' : 'My location'}
         </button>
       </div>
 
-      <p className="text-[11px] text-ink-400 mb-3 flex items-center gap-1 px-0.5">
+      <p className="text-[11px] text-white/40 mb-3 flex items-center gap-1 px-0.5">
         <Globe2 className="w-3 h-3 text-sky-400" />
         {lang === 'hi'
           ? 'स्मार्ट खोज · बड़े शहर पहले · गाँव-क्लोन छिपे'
@@ -147,7 +158,7 @@ export default function CitiesTab({ lang, cityId, onSelect, weatherMap, recentCi
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="mb-3 text-[12px] text-alert-amber bg-alert-amber/10 border border-alert-amber/30 rounded-xl px-3 py-2"
+            className="mb-3 text-[12px] text-alert-amber bg-alert-amber/10 border border-alert-amber/30 rounded-xl px-3 py-2 text-white"
           >
             {error}
           </motion.div>
@@ -156,16 +167,16 @@ export default function CitiesTab({ lang, cityId, onSelect, weatherMap, recentCi
 
       {showSearch ? (
         <div className="space-y-2 mb-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 flex items-center gap-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/55 flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-sun-400" />
             {lang === 'hi' ? 'खोज परिणाम' : 'Search results'}
-            {searching && <span className="normal-case font-normal text-ink-400">…</span>}
+            {searching && <span className="normal-case font-normal text-white/40">…</span>}
             {!searching && results.length > 0 && (
-              <span className="normal-case font-normal text-ink-400 ml-1">({results.length})</span>
+              <span className="normal-case font-normal text-white/40 ml-1">({results.length})</span>
             )}
           </p>
           {!searching && results.length === 0 && !error && (
-            <p className="text-[13px] text-ink-400 py-6 text-center">
+            <p className="text-[13px] text-white/40 py-6 text-center">
               {lang === 'hi' ? 'कुछ नहीं मिला' : 'Nothing found'}
             </p>
           )}
@@ -246,7 +257,7 @@ export default function CitiesTab({ lang, cityId, onSelect, weatherMap, recentCi
             ))}
           </Section>
 
-          <p className="text-[11px] text-ink-400 text-center py-3">
+          <p className="text-[11px] text-white/40 text-center py-3">
             {lang === 'hi'
               ? 'ऊपर सर्च में कोई भी शहर टाइप करें'
               : 'Type any city above — worldwide'}
@@ -260,7 +271,7 @@ export default function CitiesTab({ lang, cityId, onSelect, weatherMap, recentCi
 function Section({ title, children }) {
   return (
     <div className="mb-4">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2">{title}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/55 mb-2">{title}</p>
       <div className="space-y-2">{children}</div>
     </div>
   )
@@ -305,8 +316,8 @@ function CityRow({ c, lang, active, wx, onClick, badge, primary }) {
         active
           ? 'bg-navy-900 text-white border-navy-900 shadow-lg shadow-navy-900/20'
           : primary
-            ? 'bg-white border-sky-400/50 shadow-md shadow-sky-400/10 ring-1 ring-sky-400/20'
-            : 'bg-white border-cloud-200 hover:border-sky-400/50 hover:shadow-sm'
+            ? 'bg-white/6 border-sky-400/50 shadow-md shadow-sky-400/10 ring-1 ring-sky-400/20'
+            : 'bg-white/6 border-white/10 hover:border-sky-400/50 hover:shadow-sm'
       }`}
     >
       <div
@@ -322,7 +333,7 @@ function CityRow({ c, lang, active, wx, onClick, badge, primary }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <p className={`font-semibold text-[14px] truncate ${active ? 'text-white' : 'text-navy-900'}`}>
+          <p className={`font-semibold text-[14px] truncate ${active ? 'text-white' : 'text-white'}`}>
             {lang === 'hi' ? c.name_hi || c.name : c.name}
           </p>
           {badge && (
@@ -331,8 +342,8 @@ function CityRow({ c, lang, active, wx, onClick, badge, primary }) {
                 active
                   ? 'bg-sun-400/20 text-sun-300'
                   : badge === 'BEST' || badge === 'बेस्ट'
-                    ? 'bg-sun-400/20 text-navy-900'
-                    : 'bg-mint-400/20 text-navy-800'
+                    ? 'bg-sun-400/20 text-white'
+                    : 'bg-mint-400/20 text-mint-300'
               }`}
             >
               {badge}
@@ -341,25 +352,25 @@ function CityRow({ c, lang, active, wx, onClick, badge, primary }) {
           {isIntl && (
             <span
               className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                active ? 'bg-white/15 text-white/80' : 'bg-cloud-200 text-ink-600'
+                active ? 'bg-white/15 text-white/80' : 'bg-cloud-200 text-white/60'
               }`}
             >
               {cc}
             </span>
           )}
         </div>
-        <p className={`text-[11px] truncate ${active ? 'text-white/60' : 'text-ink-400'}`}>{sub}</p>
+        <p className={`text-[11px] truncate ${active ? 'text-white/60' : 'text-white/40'}`}>{sub}</p>
       </div>
       <div className="text-right shrink-0">
         {wx ? (
           <>
-            <p className={`text-[16px] font-semibold ${active ? 'text-white' : 'text-navy-900'}`}>
+            <p className={`text-[16px] font-semibold ${active ? 'text-white' : 'text-white'}`}>
               {wx.current.temp}°
             </p>
             {alert ? (
               <span className="inline-flex items-center gap-1 text-[10px]">
                 <SeverityDot severity={alert.severity} />
-                <span className={active ? 'text-white/70' : 'text-ink-500'}>{alert.severity}</span>
+                <span className={active ? 'text-white/70' : 'text-white/55'}>{alert.severity}</span>
               </span>
             ) : (
               <span className={`text-[10px] ${active ? 'text-mint-300' : 'text-mint-400'}`}>
@@ -368,7 +379,7 @@ function CityRow({ c, lang, active, wx, onClick, badge, primary }) {
             )}
           </>
         ) : (
-          <span className={`text-[11px] ${active ? 'text-white/50' : 'text-ink-400'}`}>→</span>
+          <span className={`text-[11px] ${active ? 'text-white/50' : 'text-white/40'}`}>→</span>
         )}
       </div>
     </button>

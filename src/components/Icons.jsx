@@ -1,12 +1,32 @@
 /**
- * Soft “3D” weather glyphs — Apple Weather–inspired depth (pure SVG).
+ * Soft “3D” weather glyphs — Apple Weather–inspired depth (pure SVG)
+ * + light micro-motion wrappers (CSS classes; reduced-motion safe).
  */
+
+function wrap(name, className, svg) {
+  const motion =
+    name === 'sun'
+      ? 'wx-icon-sun'
+      : name === 'cloud-rain' || name === 'cloud-drizzle'
+        ? 'wx-icon-rain'
+        : name === 'cloud-lightning'
+          ? 'wx-icon-storm'
+          : name === 'wind'
+            ? 'wx-icon-wind'
+            : ''
+  return <span className={`wx-icon ${motion} ${className}`.trim()}>{svg}</span>
+}
+
 export function WeatherIcon({ name, className = 'w-7 h-7', sun = false }) {
-  const cn = className
+  const cn = 'w-full h-full'
+  const box = className
+
   switch (name) {
     case 'sun':
-      return (
-        <svg className={cn} viewBox="0 0 64 64" fill="none">
+      return wrap(
+        name,
+        box,
+        <svg className={cn} viewBox="0 0 64 64" fill="none" aria-hidden>
           <defs>
             <radialGradient id="sunCore" cx="40%" cy="35%" r="55%">
               <stop offset="0%" stopColor="#FFF8D6" />
@@ -41,8 +61,10 @@ export function WeatherIcon({ name, className = 'w-7 h-7', sun = false }) {
         </svg>
       )
     case 'cloud-sun':
-      return (
-        <svg className={cn} viewBox="0 0 64 64" fill="none">
+      return wrap(
+        name,
+        box,
+        <svg className={cn} viewBox="0 0 64 64" fill="none" aria-hidden>
           <defs>
             <radialGradient id="csSun" cx="40%" cy="35%" r="60%">
               <stop offset="0%" stopColor="#FFF6C8" />
@@ -62,8 +84,10 @@ export function WeatherIcon({ name, className = 'w-7 h-7', sun = false }) {
         </svg>
       )
     case 'cloud':
-      return (
-        <svg className={cn} viewBox="0 0 64 64" fill="none">
+      return wrap(
+        name,
+        box,
+        <svg className={cn} viewBox="0 0 64 64" fill="none" aria-hidden>
           <defs>
             <linearGradient id="cl" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#FFFFFF" />
@@ -78,8 +102,10 @@ export function WeatherIcon({ name, className = 'w-7 h-7', sun = false }) {
       )
     case 'cloud-rain':
     case 'cloud-drizzle':
-      return (
-        <svg className={cn} viewBox="0 0 64 64" fill="none">
+      return wrap(
+        name,
+        box,
+        <svg className={cn} viewBox="0 0 64 64" fill="none" aria-hidden>
           <defs>
             <linearGradient id="cr" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#F4FAFF" />
@@ -89,14 +115,37 @@ export function WeatherIcon({ name, className = 'w-7 h-7', sun = false }) {
           <ellipse cx="30" cy="28" rx="18" ry="12" fill="url(#cr)" />
           <ellipse cx="40" cy="26" rx="13" ry="10" fill="url(#cr)" />
           <ellipse cx="22" cy="30" rx="10" ry="8" fill="#C5DCF0" />
-          <path d="M22 42c0 4-3 8-3 10" stroke="#5AC8FA" strokeWidth="3" strokeLinecap="round" />
-          <path d="M32 40c0 5-3 9-3 12" stroke="#5AC8FA" strokeWidth="3" strokeLinecap="round" />
-          <path d="M42 42c0 4-3 8-3 10" stroke="#5AC8FA" strokeWidth="3" strokeLinecap="round" />
+          <path
+            className="rain-drop"
+            d="M22 42c0 4-3 8-3 10"
+            stroke="#5AC8FA"
+            strokeWidth="3"
+            strokeLinecap="round"
+            style={{ animationDelay: '0s' }}
+          />
+          <path
+            className="rain-drop"
+            d="M32 40c0 5-3 9-3 12"
+            stroke="#5AC8FA"
+            strokeWidth="3"
+            strokeLinecap="round"
+            style={{ animationDelay: '0.2s' }}
+          />
+          <path
+            className="rain-drop"
+            d="M42 42c0 4-3 8-3 10"
+            stroke="#5AC8FA"
+            strokeWidth="3"
+            strokeLinecap="round"
+            style={{ animationDelay: '0.35s' }}
+          />
         </svg>
       )
     case 'cloud-lightning':
-      return (
-        <svg className={cn} viewBox="0 0 64 64" fill="none">
+      return wrap(
+        name,
+        box,
+        <svg className={cn} viewBox="0 0 64 64" fill="none" aria-hidden>
           <defs>
             <linearGradient id="cst" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#E8EEF6" />
@@ -120,8 +169,10 @@ export function WeatherIcon({ name, className = 'w-7 h-7', sun = false }) {
         </svg>
       )
     case 'cloud-fog':
-      return (
-        <svg className={cn} viewBox="0 0 64 64" fill="none">
+      return wrap(
+        name,
+        box,
+        <svg className={cn} viewBox="0 0 64 64" fill="none" aria-hidden>
           <ellipse cx="32" cy="26" rx="18" ry="11" fill="#D8E2EC" opacity="0.9" />
           <ellipse cx="40" cy="24" rx="12" ry="9" fill="#E8EEF4" />
           <rect x="14" y="40" width="36" height="3.5" rx="1.75" fill="#C5D0DC" opacity="0.85" />
@@ -130,18 +181,58 @@ export function WeatherIcon({ name, className = 'w-7 h-7', sun = false }) {
         </svg>
       )
     case 'snow':
-      return (
-        <svg className={cn} viewBox="0 0 64 64" fill="none">
+      return wrap(
+        name,
+        box,
+        <svg className={cn} viewBox="0 0 64 64" fill="none" aria-hidden>
           <ellipse cx="30" cy="26" rx="16" ry="11" fill="#E8F2FA" />
           <ellipse cx="40" cy="24" rx="12" ry="9" fill="#F4FAFF" />
           <circle cx="24" cy="44" r="2.5" fill="#A8D4F0" />
           <circle cx="34" cy="48" r="2.5" fill="#A8D4F0" />
           <circle cx="42" cy="43" r="2" fill="#A8D4F0" />
-          <path d="M32 38v16M26 42l12 8M38 42L26 50" stroke="#7EB8E0" strokeWidth="1.5" strokeLinecap="round" />
+          <path
+            d="M32 38v16M26 42l12 8M38 42L26 50"
+            stroke="#7EB8E0"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      )
+    case 'wind':
+      return wrap(
+        name,
+        box,
+        <svg className={cn} viewBox="0 0 64 64" fill="none" aria-hidden>
+          <path
+            d="M10 24h32a8 8 0 1 0-8-8"
+            stroke="#8ec8ff"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path
+            d="M10 34h40a6 6 0 1 1-6 6"
+            stroke="#c5e0ff"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path
+            d="M10 44h22a5 5 0 1 1-5 5"
+            stroke="#8ec8ff"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.75"
+          />
         </svg>
       )
     default:
-      return sun ? <WeatherIcon name="sun" className={cn} /> : <WeatherIcon name="cloud-sun" className={cn} />
+      return sun ? (
+        <WeatherIcon name="sun" className={box} />
+      ) : (
+        <WeatherIcon name="cloud-sun" className={box} />
+      )
   }
 }
 
@@ -153,6 +244,8 @@ export function SeverityDot({ severity, className = '' }) {
     green: 'bg-mint-400',
   }
   return (
-    <span className={`inline-block w-2 h-2 rounded-full ${colors[severity] || colors.green} ${className}`} />
+    <span
+      className={`inline-block w-2 h-2 rounded-full ${colors[severity] || colors.green} ${className}`}
+    />
   )
 }

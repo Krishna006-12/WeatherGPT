@@ -9,7 +9,7 @@ export default function MarkdownText({ text = '', className = '' }) {
 
         if (t.startsWith('## ')) {
           return (
-            <h3 key={i} className="text-[16px] font-semibold text-navy-900 pt-0.5 pb-1 leading-snug tracking-tight">
+            <h3 key={i} className="text-[16px] font-semibold text-white pt-0.5 pb-1 leading-snug tracking-tight">
               {renderInline(t.slice(3))}
             </h3>
           )
@@ -18,7 +18,7 @@ export default function MarkdownText({ text = '', className = '' }) {
           return (
             <h4
               key={i}
-              className="text-[11px] font-bold uppercase tracking-wider text-sky-400 pt-2.5 pb-1 first:pt-0"
+              className="text-[11px] font-bold uppercase tracking-wider text-sky-300 pt-2.5 pb-1 first:pt-0"
             >
               {renderInline(t.slice(4))}
             </h4>
@@ -27,8 +27,8 @@ export default function MarkdownText({ text = '', className = '' }) {
         if (/^[-•]\s+/.test(t.trim())) {
           const body = t.trim().replace(/^[-•]\s+/, '')
           return (
-            <div key={i} className="flex gap-2.5 text-[14px] leading-relaxed text-ink-800 pl-0.5 py-0.5">
-              <span className="text-sky-400 shrink-0 mt-[3px]">•</span>
+            <div key={i} className="flex gap-2.5 text-[14px] leading-relaxed text-white/85 pl-0.5 py-0.5">
+              <span className="text-sky-300 shrink-0 mt-[3px]">•</span>
               <span className="min-w-0">{renderInline(body)}</span>
             </div>
           )
@@ -36,14 +36,14 @@ export default function MarkdownText({ text = '', className = '' }) {
         if (/^\d+\.\s+/.test(t.trim())) {
           const m = t.trim().match(/^(\d+)\.\s+(.*)$/)
           return (
-            <div key={i} className="flex gap-2.5 text-[14px] leading-relaxed text-ink-800 pl-0.5 py-0.5">
-              <span className="text-sky-400 font-semibold shrink-0 tabular-nums">{m[1]}.</span>
+            <div key={i} className="flex gap-2.5 text-[14px] leading-relaxed text-white/85 pl-0.5 py-0.5">
+              <span className="text-sky-300 font-semibold shrink-0 tabular-nums">{m[1]}.</span>
               <span className="min-w-0">{renderInline(m[2])}</span>
             </div>
           )
         }
         return (
-          <p key={i} className="text-[14px] leading-relaxed text-ink-800">
+          <p key={i} className="text-[14px] leading-relaxed text-white/85">
             {renderInline(t)}
           </p>
         )
@@ -61,7 +61,7 @@ function renderInline(line) {
   while ((m = re.exec(line)) !== null) {
     if (m.index > last) parts.push(<span key={k++}>{line.slice(last, m.index)}</span>)
     parts.push(
-      <strong key={k++} className="font-semibold text-navy-900">
+      <strong key={k++} className="font-semibold text-white">
         {m[1]}
       </strong>
     )

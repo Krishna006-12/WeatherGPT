@@ -13,6 +13,15 @@ import {
   predictionSummaryText,
   estimateVisibility,
 } from './insights'
+import {
+  detectCrop,
+  isCropToken,
+  isCropQuestion,
+  isCropFollowUp,
+  allCropStopwords,
+  getCropById,
+} from '../data/crops'
+import { classifyQuery, isCropRoute, isCropOnlyClassification } from './queryClassify'
 
 /** Words that are never place names (voice + typed) */
 const PLACE_STOP = new Set(
@@ -85,8 +94,324 @@ const PLACE_STOP = new Set(
     'kal',
     'aaj',
     'abhi',
+    'tell',
+    'give',
+    'show',
+    'how',
+    'much',
+    'many',
+    'like',
+    'looks',
+    'looking',
+    'check',
+    'get',
+    'need',
+    'want',
+    'know',
+    'tell',
+    'me',
+    'you',
+    'your',
+    'our',
+    'any',
+    'some',
+    'city',
+    'country',
+    'place',
+    'location',
+    'outside',
+    'inside',
+    'chance',
+    'condition',
+    'conditions',
+    'update',
+    'report',
+    'details',
+    'info',
+    'information',
+    'and',
+    'or',
+    'but',
+    'not',
+    'are',
+    'was',
+    'were',
+    'been',
+    'being',
+    'have',
+    'has',
+    'had',
+    'does',
+    'did',
+    'its',
+    'his',
+    'her',
+    'their',
+    'them',
+    'they',
+    'we',
+    'us',
+    'an',
+    'a',
+    'on',
+    'by',
+    'vs',
+    'than',
+    'then',
+    'also',
+    'just',
+    'only',
+    'very',
+    'really',
+    'please',
+    'thanks',
+    'hello',
+    'hi',
+    'hey',
+    'namaste',
+    'humidity',
+    'temperature',
+    'temp',
+    'wind',
+    'aqi',
+    'climate',
+    'model',
+    'models',
+    'nwp',
+    'gfs',
+    'ecmwf',
+    'icon',
+    'irrigation',
+    'umbrella',
+    'degree',
+    'celsius',
+    'fahrenheit',
+    // Crop / farm lexicon — never treat as city names (wheat → "Wheat US" bug)
+    ...allCropStopwords(),
+    'gehun',
+    'gehu',
+    'aloo',
+    'alu',
+    'paddy',
+    'dhan',
+    'chawal',
+    'ganna',
+    'sarson',
+    'makka',
+    'kapas',
+    'pyaz',
+    'piyaz',
+    'tamatar',
+    'soya',
+    'soybean',
+    'chana',
+    'gram',
+    'blight',
+    'lodging',
+    'threshing',
+    'sowing',
+    'harvest',
+    'fertilizer',
+    'pesticide',
+    'fungicide',
+    'vegetables',
+    'vegetable',
+    'pulse',
+    'pulses',
+    'oilseed',
+    'kharif',
+    'rabi',
+    'zaid',
   ].map((s) => s.toLowerCase())
 )
+
+/** High-signal place tokens (any casing) — used when sentence parsers miss "of Tokyo" etc. */
+const FAMOUS_PLACES = [
+  'tokyo',
+  'osaka',
+  'kyoto',
+  'london',
+  'paris',
+  'dubai',
+  'singapore',
+  'new york',
+  'los angeles',
+  'san francisco',
+  'hong kong',
+  'beijing',
+  'shanghai',
+  'seoul',
+  'bangkok',
+  'jakarta',
+  'manila',
+  'sydney',
+  'melbourne',
+  'toronto',
+  'vancouver',
+  'moscow',
+  'berlin',
+  'madrid',
+  'rome',
+  'milan',
+  'istanbul',
+  'cairo',
+  'lagos',
+  'nairobi',
+  'chicago',
+  'boston',
+  'miami',
+  'washington',
+  'amsterdam',
+  'vienna',
+  'zurich',
+  'geneva',
+  'brussels',
+  'lisbon',
+  'athens',
+  'warsaw',
+  'prague',
+  'budapest',
+  'stockholm',
+  'oslo',
+  'copenhagen',
+  'helsinki',
+  'dublin',
+  'edinburgh',
+  'manchester',
+  'barcelona',
+  'munich',
+  'frankfurt',
+  'hamburg',
+  'taipei',
+  'hanoi',
+  'auckland',
+  'cape town',
+  'johannesburg',
+  'mexico city',
+  'buenos aires',
+  'sao paulo',
+  'rio de janeiro',
+  'lima',
+  'bogota',
+  'santiago',
+  'tehran',
+  'baghdad',
+  'kuwait',
+  'muscat',
+  'manama',
+  'islamabad',
+  'karachi',
+  'lahore',
+  'dhaka',
+  'colombo',
+  'kathmandu',
+  'abu dhabi',
+  'sharjah',
+  'doha',
+  'riyadh',
+  'jeddah',
+  'kuala lumpur',
+  'ho chi minh',
+  'japan',
+  'china',
+  'usa',
+  'uk',
+  'france',
+  'germany',
+  'australia',
+  'canada',
+  'russia',
+  'brazil',
+  'italy',
+  'spain',
+  'turkey',
+  'egypt',
+  'thailand',
+  'vietnam',
+  'indonesia',
+  'malaysia',
+  'pakistan',
+  'bangladesh',
+  'nepal',
+  'sri lanka',
+  'uae',
+  'qatar',
+  'saudi arabia',
+  'south korea',
+  'north korea',
+  'new zealand',
+  'south africa',
+  'mexico',
+  'argentina',
+  'chile',
+  'peru',
+  'colombia',
+  'nigeria',
+  'kenya',
+  'philippines',
+  'taiwan',
+  'switzerland',
+  'netherlands',
+  'belgium',
+  'portugal',
+  'greece',
+  'poland',
+  'sweden',
+  'norway',
+  'denmark',
+  'finland',
+  'ireland',
+  'austria',
+  'hungary',
+  'czechia',
+  'noida',
+  'nodia',
+  'gurugram',
+  'gurgaon',
+  'mumbai',
+  'delhi',
+  'bengaluru',
+  'bangalore',
+  'chennai',
+  'kolkata',
+  'hyderabad',
+  'pune',
+  'ahmedabad',
+  'jaipur',
+  'lucknow',
+  'kanpur',
+  'indore',
+  'bhopal',
+  'patna',
+  'chandigarh',
+  'kochi',
+  'goa',
+  'varanasi',
+  'agra',
+  'amritsar',
+  'nagpur',
+  'surat',
+  'coimbatore',
+  'madurai',
+  'mysuru',
+  'mysore',
+  'thiruvananthapuram',
+  'visakhapatnam',
+  'vijayawada',
+  'ranchi',
+  'raipur',
+  'dehradun',
+  'shimla',
+  'srinagar',
+  'guwahati',
+  'imphal',
+  'shillong',
+  'aizawl',
+  'gangtok',
+  'panaji',
+  'pondicherry',
+  'puducherry',
+].sort((a, b) => b.length - a.length)
 
 const INTENTS = {
   rain: /rain|baarish|barish|barsat|bārish|वर्षा|बारिश|फुहार|bouchhar|drizzle|shower|wet|umbrella|छाता/i,
@@ -150,10 +475,10 @@ function extractCityLocal(text, fallback) {
 /** Keep only the place token(s); strip "right now", "today", etc. */
 function cleanPlacePhrase(raw) {
   if (!raw) return null
-  let phrase = raw.trim().replace(/[?.!,]+$/g, '')
+  let phrase = raw.trim().replace(/[?.!,;:]+$/g, '')
   phrase = phrase
     .replace(
-      /\b(right\s+now|rightnow|just\s+now|as\s+of\s+now|currently|today|tonight|tomorrow|kal|abhi|please|pls|now)\b/gi,
+      /\b(right\s+now|rightnow|just\s+now|as\s+of\s+now|currently|today|tonight|tomorrow|kal|abhi|please|pls|now|weather|forecast|temperature|temp|rain|aqi|climate)\b/gi,
       ' '
     )
     .replace(/\s+/g, ' ')
@@ -163,52 +488,171 @@ function cleanPlacePhrase(raw) {
   let parts = phrase.split(/\s+/).filter(Boolean)
   while (parts.length && PLACE_STOP.has(parts[parts.length - 1].toLowerCase())) parts.pop()
   while (parts.length && PLACE_STOP.has(parts[0].toLowerCase())) parts.shift()
+  // Drop any remaining crop tokens (wheat, potato, gehun…)
+  parts = parts.filter((p) => !isCropToken(p) && !PLACE_STOP.has(p.toLowerCase()))
   phrase = parts.join(' ').trim()
   if (!phrase || phrase.length < 2) return null
   if (PLACE_STOP.has(phrase.toLowerCase())) return null
+  if (isCropToken(phrase) || detectCrop(phrase)) return null
 
-  // Prefer first 1–3 tokens (city names rarely longer in speech)
+  // Prefer first 1–4 tokens (New York, Mexico City, Abu Dhabi, …)
   parts = phrase.split(/\s+/)
-  if (parts.length > 3) phrase = parts.slice(0, 3).join(' ')
+  if (parts.length > 4) phrase = parts.slice(0, 4).join(' ')
 
   return normalizePlaceQuery(phrase) || phrase
 }
 
+/**
+ * Pull a place name out of free text.
+ * Handles: "weather of Tokyo", "in Noida", "Tokyo weather", "Japan ka mausam", bare "Dubai".
+ */
 function guessPlacePhrase(text) {
-  const patterns = [
-    // "in Noida right now" → capture until end but cleaned later
-    /\b(?:in|at|for|near|around)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.'-]{1,40})/i,
-    /([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.'-]{1,30})\s*(?:में|का|की|के|के\s*लिए)\b/,
-    // "Noida irrigation" / "Dubai weather"
-    /\b([A-Za-z][A-Za-z.'-]{2,24})(?:\s+(?:weather|rain|irrigation|forecast|alert|travel|school|temperature|aqi))?\b/i,
-  ]
-  for (const re of patterns) {
-    const m = text.match(re)
-    if (m?.[1]) {
-      const phrase = cleanPlacePhrase(m[1])
-      if (phrase && phrase.length >= 2) return phrase
+  if (!text) return null
+  const raw = String(text).trim()
+  const lower = raw.toLowerCase()
+
+  // Bare crop queries ("wheat", "potato advisory") are NOT places
+  if (isCropQuestion(text) && !/\b(in|at|of|near|around)\s+[a-z\u0900-\u097f]{3,}/i.test(lower)) {
+    // Allow "weather in Kanpur for wheat" to still extract Kanpur via patterns below
+    // but block pure crop / crop+agri phrases
+    const onlyCrop =
+      detectCrop(text) &&
+      !/\b(tokyo|delhi|mumbai|london|paris|dubai|noida|kanpur|lucknow|india|japan|china)\b/i.test(
+        lower
+      )
+    if (onlyCrop) {
+      // Still try preposition place patterns; if none, return null
+      const placeTry =
+        raw.match(
+          /\b(?:in|at|near|around|of)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.']{1,40})/i
+        )?.[1] || null
+      if (!placeTry || isCropToken(placeTry) || detectCrop(placeTry)) return null
     }
   }
 
-  // Last resort: any alias token present
-  const lower = text.toLowerCase()
-  for (const alias of Object.keys(CITY_ALIASES)) {
-    if (lower.includes(alias)) return CITY_ALIASES[alias]
+  const patterns = [
+    // "weather of Tokyo" / "temperature in Paris" / "forecast for London"
+    /\b(?:weather|forecast|rain|temperature|temp|climate|aqi|humidity|wind|travel\s+risk|school|conditions?|mausam|baarish)\s+(?:of|in|at|for|near|around|on)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.'-]{1,48})/i,
+    // "how is weather in Tokyo" / "what's the weather like in Dubai"
+    /\b(?:how(?:'s|\s+is)?|what(?:'s|\s+is)?)\s+(?:the\s+)?(?:weather|forecast|temp(?:erature)?|rain|aqi|climate)\s+(?:like\s+)?(?:in|at|for|of|near|around)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.'-]{1,48})/i,
+    // "tell me weather of X" / "show me rain in X"
+    /\b(?:tell|show|give|check|get)\s+(?:me\s+)?(?:the\s+)?(?:weather|forecast|rain|temp(?:erature)?|aqi)?\s*(?:of|in|at|for|near|around)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.'-]{1,48})/i,
+    // generic preposition: "in Noida right now", "of Tokyo", "near Paris"
+    /\b(?:in|at|for|near|around|of)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.'-]{1,48})/i,
+    // Hindi postpositions
+    /([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.'-]{1,40})\s*(?:में|का|की|के|के\s*लिए|में\s*मौसम)\b/,
+    // "Tokyo weather" / "Dubai rain" / "Japan forecast"
+    /\b([A-Za-z][A-Za-z.'-]{2,28}(?:\s+[A-Za-z][A-Za-z.'-]{2,20}){0,3})\s+(?:weather|rain|irrigation|forecast|alert|travel|school|temperature|temp|aqi|climate|mausam|baarish)\b/i,
+  ]
+
+  for (const re of patterns) {
+    const m = raw.match(re)
+    if (m?.[1]) {
+      const phrase = cleanPlacePhrase(m[1])
+      if (phrase && phrase.length >= 2 && !PLACE_STOP.has(phrase.toLowerCase())) return phrase
+    }
   }
+
+  // Famous multi-word / single-word places as whole tokens (Tokyo, New York, …)
+  for (const name of FAMOUS_PLACES) {
+    const re = new RegExp(`(?:^|[^a-z])${name.replace(/\s+/g, '\\s+')}(?:[^a-z]|$)`, 'i')
+    if (re.test(lower)) return name
+  }
+
+  // City aliases (nodia → noida)
+  const aliasEntries = Object.entries(CITY_ALIASES).sort((a, b) => b[0].length - a[0].length)
+  for (const [alias, canon] of aliasEntries) {
+    const re = new RegExp(`(?:^|[^a-z])${alias.replace(/\s+/g, '\\s+')}(?:[^a-z]|$)`, 'i')
+    if (re.test(lower)) return typeof canon === 'string' ? canon : alias
+  }
+
+  // Capitalized tokens (typed "weather Tokyo" without preposition)
+  const caps = raw.match(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,3})\b/g)
+  if (caps) {
+    for (const c of caps) {
+      const phrase = cleanPlacePhrase(c)
+      if (phrase && phrase.length >= 3 && !PLACE_STOP.has(phrase.toLowerCase())) return phrase
+    }
+  }
+
+  // Bare residual tokens: longest non-stop word ≥ 3 chars (e.g. "tokyo?" alone)
+  const tokens = lower
+    .replace(/[?.!,;:]+/g, ' ')
+    .split(/\s+/)
+    .filter(
+      (t) =>
+        t.length >= 3 &&
+        !PLACE_STOP.has(t) &&
+        !isCropToken(t) &&
+        !/^\d+$/.test(t)
+    )
+  if (tokens.length === 1) return tokens[0]
+  // Prefer last content token in short queries ("weather tokyo")
+  if (tokens.length >= 2 && tokens.length <= 6) {
+    const last = tokens[tokens.length - 1]
+    if (last.length >= 3 && !isCropToken(last)) return last
+  }
+
   return null
 }
 
 async function extractCity(text, fallback) {
-  const local = extractCityLocal(text, null)
-  if (local) return local
-  const phrase = guessPlacePhrase(text)
-  if (!phrase) return fallback
-  try {
-    const resolved = await resolveCity(phrase)
-    return resolved || fallback
-  } catch {
+  const classified = classifyQuery(text, null)
+
+  // Crop-only: NEVER geocode / resolve the raw crop string as a place
+  if (isCropOnlyClassification(classified)) {
     return fallback
   }
+
+  // Crop + location: resolve ONLY the location phrase (Kanpur), never "wheat"
+  if (classified.type === 'crop_location' && classified.locationQuery) {
+    const locPhrase = classified.locationQuery
+    const local = findCityLocal(locPhrase) || extractCityLocal(locPhrase, null)
+    if (local) return local
+    try {
+      const resolved = await resolveCity(locPhrase)
+      if (resolved && !isCropToken(resolved.name) && !detectCrop(resolved.name || '')) {
+        return resolved
+      }
+    } catch {
+      /* ignore */
+    }
+    return fallback
+  }
+
+  // 1) Curated India list / aliases on full text
+  const local = extractCityLocal(text, null)
+  if (local) return local
+
+  // Prefer classifier location phrase when present
+  const phrase =
+    (classified.locationQuery && !isCropToken(classified.locationQuery)
+      ? classified.locationQuery
+      : null) || guessPlacePhrase(text)
+  if (!phrase) return fallback
+  if (isCropToken(phrase) || detectCrop(phrase)) return fallback
+
+  const local2 = findCityLocal(phrase) || extractCityLocal(phrase, null)
+  if (local2) return local2
+
+  try {
+    const resolved = await resolveCity(phrase)
+    if (resolved) {
+      if (isCropToken(resolved.name) || detectCrop(resolved.name || '')) return fallback
+      return resolved
+    }
+  } catch {
+    /* fall through */
+  }
+
+  try {
+    const again = await resolveCity(String(phrase).split(/\s+/).slice(0, 3).join(' '))
+    if (again && !isCropToken(again.name) && !detectCrop(again.name || '')) return again
+  } catch {
+    /* ignore */
+  }
+
+  return fallback
 }
 
 function climateAnswer(wx, lang) {
@@ -291,6 +735,8 @@ function aviationLiteAnswer(wx, lang) {
 function detectIntent(text) {
   if (INTENTS.outofscope.test(text)) return 'outofscope'
   if (INTENTS.hello.test(text.trim()) && text.trim().split(/\s+/).length < 4) return 'hello'
+  // Crop name (wheat, potato, gehun…) → farmer crop brief, not city weather
+  if (detectCrop(text) && isCropQuestion(text)) return 'crop'
   if (INTENTS.climate.test(text)) return 'climate'
   if (INTENTS.models.test(text)) return 'models'
   if (INTENTS.aviation_lite.test(text)) return 'aviation_lite'
@@ -348,9 +794,10 @@ function rainAnswer(wx, lang) {
           {
             heading: 'आज vs कल',
             body:
-              `• **आज:** ${t.pop}% संभावना · ~${t.rain} मिमी · ${t.condition_hi}\n` +
-              `• **कल:** ${tmr.pop}% संभावना · ~${tmr.rain} मिमी · ${tmr.condition_hi}\n` +
-              `• **5-दिन कुल वर्षा:** ~${wx.agri.forecastRain} मिमी`,
+              `• **आज:** ~${t.pop}% बारिश संभावना · ~${t.rain} मिमी · ${t.condition_hi}\n` +
+              `• **कल:** ~${tmr.pop}% बारिश संभावना · ~${tmr.rain} मिमी · ${tmr.condition_hi}\n` +
+              `• **5-दिन कुल वर्षा:** ~${wx.agri.forecastRain} मिमी\n` +
+              `• नोट: % दिन-प्रतिनिधि है (केवल एक घंटे का max नहीं)`,
           },
           {
             heading: 'घंटेवार संकेत',
@@ -385,9 +832,10 @@ function rainAnswer(wx, lang) {
         {
           heading: 'Today vs tomorrow',
           body:
-            `• **Today:** ${t.pop}% chance · ~${t.rain} mm · ${t.condition}\n` +
-            `• **Tomorrow:** ${tmr.pop}% chance · ~${tmr.rain} mm · ${tmr.condition}\n` +
-            `• **5-day total rainfall:** ~${wx.agri.forecastRain} mm`,
+            `• **Today:** ~${t.pop}% chance of rain · ~${t.rain} mm · ${t.condition}\n` +
+            `• **Tomorrow:** ~${tmr.pop}% chance of rain · ~${tmr.rain} mm · ${tmr.condition}\n` +
+            `• **5-day total rainfall:** ~${wx.agri.forecastRain} mm\n` +
+            `• Note: % is day-representative (not a single hourly spike)`,
         },
         {
           heading: 'Hourly signal',
@@ -508,7 +956,247 @@ function alertAnswer(wx, lang) {
   }
 }
 
-function agriAnswer(wx, lang) {
+
+/**
+ * Crop Intelligence — compact, scannable, grounded on live wx + catalog rules.
+ * Never invents soil stage, disease diagnosis, or yields.
+ */
+function levelLabel(lang, key) {
+  const map = {
+    en: {
+      low: 'Low',
+      moderate: 'Moderate',
+      elevated: 'Elevated',
+      high: 'High',
+      favourable: 'Favourable',
+      watch: 'Watch',
+      limited: 'Limited data',
+    },
+    hi: {
+      low: 'कम',
+      moderate: 'मध्यम',
+      elevated: 'बढ़ा हुआ',
+      high: 'उच्च',
+      favourable: 'अनुकूल',
+      watch: 'निगरानी',
+      limited: 'सीमित डेटा',
+    },
+  }
+  return (map[lang] || map.en)[key] || key
+}
+
+function cropAnswer(wx, lang, crop, userText = '') {
+  if (!crop) {
+    return {
+      text:
+        lang === 'hi'
+          ? '## 🌾 फसल बुद्धिमत्ता\n\nफसल पहचानी नहीं गई। गेहूँ, धान, आलू… जैसे नाम आज़माएँ।'
+          : '## 🌾 Crop Intelligence\n\nCrop not recognised. Try wheat, rice, potato…',
+      type: 'crop',
+      confidence: 0.5,
+      cropId: null,
+      cityId: wx?.city?.id,
+    }
+  }
+
+  const hasWx = !!(wx?.current && wx?.daily?.[0])
+  const city = hasWx
+    ? cityName(wx, lang)
+    : lang === 'hi'
+      ? 'स्थान अनुपलब्ध'
+      : 'Location unavailable'
+  const d0 = wx?.daily?.[0] || {}
+  const c = wx?.current || {}
+  const pop = Number(d0.pop) || 0
+  const rain = Number(d0.rain) || 0
+  const wind = Number(c.wind ?? d0.wind) || 0
+  const temp = Number.isFinite(Number(c.temp ?? d0.max)) ? Number(c.temp ?? d0.max) : null
+  const humidity = Number.isFinite(Number(c.humidity)) ? Number(c.humidity) : null
+  const name = lang === 'hi' ? crop.name_hi : crop.name_en
+  const season = lang === 'hi' ? crop.season_hi : crop.season_en
+  const lower = String(userText || '').toLowerCase()
+
+  let focusKey = 'general'
+  if (/spray|छिड़काव|fungicide|pesticide|blight|दवा/.test(lower)) focusKey = 'spray'
+  else if (/irrigat|sincai|sinchai|सिंचाई|पानी|water/.test(lower)) focusKey = 'water'
+  else if (/heat|garam|गर्मी|लू|temperature|temp/.test(lower)) focusKey = 'heat'
+  else if (/rain|baarish|barish|वर्षा|बारिश|wet|harvest|कटाई|affect|impact|असर/.test(lower))
+    focusKey = 'rain'
+
+  let rainRisk = 'low'
+  if (!hasWx) rainRisk = 'limited'
+  else if (pop >= 70 || rain >= 15) rainRisk = 'high'
+  else if (pop >= 45 || rain >= 5) rainRisk = 'elevated'
+  else if (pop >= 25 || rain >= 1) rainRisk = 'moderate'
+
+  let tempImpact = 'favourable'
+  if (!hasWx || temp == null) tempImpact = 'limited'
+  else if (temp >= 38) tempImpact = 'high'
+  else if (temp >= 34) tempImpact = 'elevated'
+  else if (temp <= 8) tempImpact = 'watch'
+  else if (temp >= 18 && temp <= 32) tempImpact = 'favourable'
+  else tempImpact = 'moderate'
+
+  let weatherImpact = 'moderate'
+  if (!hasWx) weatherImpact = 'limited'
+  else if (rainRisk === 'high' || tempImpact === 'high') weatherImpact = 'elevated'
+  else if (rainRisk === 'low' && (tempImpact === 'favourable' || tempImpact === 'moderate'))
+    weatherImpact = 'favourable'
+  else if (rainRisk === 'elevated') weatherImpact = 'watch'
+
+  let irrigateLine
+  if (!hasWx) {
+    irrigateLine =
+      lang === 'hi'
+        ? 'स्थानीय मौसम उपलब्ध नहीं — सामान्य फसल ज्ञान ही।'
+        : 'Local weather unavailable — general crop notes only.'
+  } else if (pop >= 55 || rain >= 8) {
+    irrigateLine =
+      lang === 'hi'
+        ? 'बारिश संकेत (~' + pop + '% / ' + rain + ' मिमी) — सिंचाई टालने पर विचार।'
+        : 'Rain signal (~' + pop + '% / ' + rain + ' mm) — consider holding irrigation.'
+  } else if (pop < 25 && rain < 1 && temp != null && temp >= 33) {
+    irrigateLine =
+      lang === 'hi'
+        ? 'सूखा + गर्मी संकेत — फसल तनाव दिखे तो हल्की सिंचाई।'
+        : 'Dry + heat signal — light irrigation only if crop shows stress.'
+  } else {
+    irrigateLine =
+      lang === 'hi'
+        ? 'मध्यम संकेत — खेत/मिट्टी देखकर निर्णय (सेंसर डेटा नहीं)।'
+        : 'Moderate signal — decide from field/soil (no on-farm sensors here).'
+  }
+
+  const tip =
+    focusKey === 'spray'
+      ? lang === 'hi'
+        ? crop.spray_hi
+        : crop.spray_en
+      : focusKey === 'water'
+        ? lang === 'hi'
+          ? crop.water_hi
+          : crop.water_en
+        : focusKey === 'heat'
+          ? lang === 'hi'
+            ? crop.heat_hi
+            : crop.heat_en
+          : focusKey === 'rain'
+            ? lang === 'hi'
+              ? crop.rain_hi
+              : crop.rain_en
+            : lang === 'hi'
+              ? crop.rain_hi
+              : crop.rain_en
+
+  let riskLine = tip
+  if (
+    hasWx &&
+    ((c.code != null && c.code >= 95) ||
+      (wx.alerts || []).some((a) => a.severity === 'red' || a.severity === 'amber'))
+  ) {
+    riskLine =
+      (lang === 'hi'
+        ? 'सक्रिय खराब मौसम/अलर्ट — बाहरी खेत काम सीमित रखें। '
+        : 'Active severe weather/alert — limit exposed field work. ') + tip
+  }
+
+  let outlook
+  if (!hasWx) {
+    outlook =
+      lang === 'hi'
+        ? name + ': सामान्य ज्ञान — लोकेशन मौसम जुड़ने पर प्रभाव अपडेट होगा।'
+        : name + ': general notes — impact updates when location weather is available.'
+  } else {
+    const tmr = wx.daily?.[1]
+    const tmrPop = tmr?.pop ?? '—'
+    outlook =
+      lang === 'hi'
+        ? 'आज **' + temp + '°C**, POP ~**' + pop + '%**. कल POP ~**' + tmrPop + '%**. ' + season
+        : 'Today **' + temp + '°C**, rain chance ~**' + pop + '%**. Tomorrow ~**' + tmrPop + '%**. ' + season
+  }
+
+  const wxNow = hasWx
+    ? lang === 'hi'
+      ? '**' + temp + '°C** · ' + (c.condition_hi || c.condition || '—') + ' · नमी ' + (humidity ?? '—') + '% · हवा ' + wind + ' किमी/घं'
+      : '**' + temp + '°C** · ' + (c.condition || '—') + ' · humidity ' + (humidity ?? '—') + '% · wind ' + wind + ' km/h'
+    : lang === 'hi'
+      ? 'मौसम डेटा लोड नहीं'
+      : 'Weather data not loaded'
+
+  const tempBit = temp != null ? ' (' + temp + '°C)' : ''
+  const rainBitHi = hasWx ? ' (~' + pop + '% · ' + rain + ' मिमी)' : ''
+  const rainBitEn = hasWx ? ' (~' + pop + '% · ' + rain + ' mm)' : ''
+
+  if (lang === 'hi') {
+    return {
+      ...wrapSummary(
+        '🌾 फसल बुद्धिमत्ता — ' + name,
+        [
+          {
+            heading: 'संदर्भ',
+            body: '**' + name + '** · 📍 **' + city + '**\n' + wxNow,
+          },
+          {
+            heading: 'प्रभाव स्नैपशॉट',
+            body:
+              '• मौसम प्रभाव: **' + levelLabel('hi', weatherImpact) + '**\n' +
+              '• तापमान: **' + levelLabel('hi', tempImpact) + '**' + tempBit + '\n' +
+              '• वर्षा जोखिम: **' + levelLabel('hi', rainRisk) + '**' + rainBitHi + '\n' +
+              '• सिंचाई संदर्भ: ' + irrigateLine,
+          },
+          { heading: 'जोखिम / नोट', body: riskLine },
+          { heading: 'आउटलुक', body: outlook },
+          {
+            heading: 'ईमानदारी',
+            body: 'सामान्य फसल×मौसम मार्गदर्शन — उपज/रोग निदान/मिट्टी सेंसर नहीं। स्थानीय KVK से पुष्टि करें।',
+          },
+        ],
+        null,
+        hasWx ? 0.88 : 0.62
+      ),
+      type: 'crop',
+      cropId: crop.id,
+      cityId: wx?.city?.id || null,
+      placeResolved: false,
+    }
+  }
+
+  return {
+    ...wrapSummary(
+      '🌾 Crop Intelligence — ' + name,
+      [
+        {
+          heading: 'Context',
+          body: '**' + name + '** · 📍 **' + city + '**\n' + wxNow,
+        },
+        {
+          heading: 'Impact snapshot',
+          body:
+            '• Weather impact: **' + levelLabel('en', weatherImpact) + '**\n' +
+            '• Temperature: **' + levelLabel('en', tempImpact) + '**' + tempBit + '\n' +
+            '• Rainfall risk: **' + levelLabel('en', rainRisk) + '**' + rainBitEn + '\n' +
+            '• Irrigation context: ' + irrigateLine,
+        },
+        { heading: 'Risk / note', body: riskLine },
+        { heading: 'Outlook', body: outlook },
+        {
+          heading: 'Honesty',
+          body: 'General crop×weather guidance — not yield prediction, disease diagnosis, or soil-sensor advice. Confirm with local extension / KVK.',
+        },
+      ],
+      null,
+      hasWx ? 0.88 : 0.62
+    ),
+    type: 'crop',
+    cropId: crop.id,
+    cityId: wx?.city?.id || null,
+    placeResolved: false,
+  }
+}
+
+function agriAnswer(wx, lang, cropHint = null) {
+  if (cropHint) return cropAnswer(wx, lang, cropHint, '')
+
   const city = cityName(wx, lang)
   const soil = lang === 'hi' ? wx.agri.soil.hi : wx.agri.soil.en
   const advice = lang === 'hi' ? wx.agri.advice_hi : wx.agri.advice_en
@@ -534,7 +1222,7 @@ function agriAnswer(wx, lang) {
           },
           {
             heading: 'फसल संदर्भ',
-            body: `स्थानीय प्रोफ़ाइल फसलें: **${crops}**. गीले शिखर (${pred.peakRainDay ? (pred.peakRainDay.weekday_hi || pred.peakRainDay.weekday) : '—'}) के आसपास कटाई/सुखाई टालें।`,
+            body: `स्थानीय प्रोफ़ाइल फसलें: **${crops}**. गीले शिखर (${pred.peakRainDay ? (pred.peakRainDay.weekday_hi || pred.peakRainDay.weekday) : '—'}) के आसपास कटाई/सुखाई टालें। फसल नाम पूछें (गेहूँ, आलू, धान…) — विस्तृत सलाह मिलेगी।`,
           },
           {
             heading: 'क्रियात्मक योजना',
@@ -569,7 +1257,7 @@ function agriAnswer(wx, lang) {
         },
         {
           heading: 'Crop context',
-          body: `Local crop profile: **${crops}**. Avoid harvest/drying around the wet peak (${pred.peakRainDay?.weekday || '—'}).`,
+          body: `Local crop profile: **${crops}**. Avoid harvest/drying around the wet peak (${pred.peakRainDay?.weekday || '—'}). Ask a crop name (wheat, potato, rice…) for a tailored brief.`,
         },
         {
           heading: 'Action plan',
@@ -927,7 +1615,13 @@ function generalAnswer(wx, lang) {
 }
 
 export async function chat(message, ctx) {
-  const { weather: currentWx, lang: uiLang, fetchWeatherFor } = ctx
+  const {
+    weather: currentWx,
+    lang: uiLang,
+    fetchWeatherFor,
+    cropContext = null,
+    classified: preClassified = null,
+  } = ctx
   const text = (message || '').trim()
   if (!text) {
     return {
@@ -939,7 +1633,21 @@ export async function chat(message, ctx) {
 
   const detected = detectLang(text)
   const lang = detected || uiLang
-  const intent = detectIntent(text)
+
+  // Prefer App-level classifier (runs before geocode); else classify here
+  const classified = preClassified || classifyQuery(text, cropContext)
+
+  // Crop entity first (including follow-ups: "will rain affect it?")
+  let cropHit = classified.crop || detectCrop(text)
+  if (!cropHit && cropContext?.cropId && isCropFollowUp(text)) {
+    cropHit = getCropById(cropContext.cropId)
+  }
+  let intent = detectIntent(text)
+  if (isCropRoute(classified)) {
+    intent = 'crop'
+  } else if (cropHit && intent === 'agri') {
+    intent = 'crop'
+  }
 
   if (intent === 'outofscope') {
     return {
@@ -957,17 +1665,41 @@ export async function chat(message, ctx) {
   }
 
   let wx = currentWx
-  const mentioned = await extractCity(text, null)
-  if (mentioned && mentioned.id !== currentWx?.city?.id && fetchWeatherFor) {
+
+  // Place fetch rules from classifier — crop-only never geocodes
+  if (isCropOnlyClassification(classified)) {
+    // stay on currentWx — crop name must never become weather place
+  } else if (classified.type === 'crop_location' || (!isCropRoute(classified) && classified.allowGeocode !== false)) {
     try {
-      wx = await fetchWeatherFor(mentioned)
+      const mentioned = await extractCity(text, null)
+      if (
+        mentioned &&
+        mentioned.id !== currentWx?.city?.id &&
+        fetchWeatherFor &&
+        !detectCrop(mentioned.name || '') &&
+        !isCropToken(mentioned.name || '')
+      ) {
+        try {
+          wx = await fetchWeatherFor(mentioned)
+        } catch {
+          wx = currentWx
+        }
+      }
     } catch {
-      wx = currentWx
+      /* keep current */
     }
+  }
+
+  // Guard: never run answers against a city that is actually a crop name
+  if (wx?.city && (detectCrop(wx.city.name || '') || isCropToken(wx.city.name || ''))) {
+    wx = currentWx
   }
 
   let result
   switch (intent) {
+    case 'crop':
+      result = cropAnswer(wx, lang, cropHit || detectCrop(text), text)
+      break
     case 'rain':
       result = rainAnswer(wx, lang)
       break
@@ -975,7 +1707,7 @@ export async function chat(message, ctx) {
       result = alertAnswer(wx, lang)
       break
     case 'agri':
-      result = agriAnswer(wx, lang)
+      result = agriAnswer(wx, lang, cropHit)
       break
     case 'forecast':
       result = forecastAnswer(wx, lang)
@@ -1006,30 +1738,45 @@ export async function chat(message, ctx) {
       result = generalAnswer(wx, lang)
       break
     default:
-      if (INTENTS.rain.test(text) && INTENTS.irrigate.test(text)) {
+      if (cropHit) {
+        result = cropAnswer(wx, lang, cropHit, text)
+      } else if (INTENTS.rain.test(text) && INTENTS.irrigate.test(text)) {
         result = agriAnswer(wx, lang)
       } else {
         result = generalAnswer(wx, lang)
       }
   }
 
-  const mins = Math.max(1, Math.round((Date.now() - wx.fetchedAt) / 60000))
-  result.source = wx.live
-    ? lang === 'hi'
-      ? `स्रोत: Open-Meteo + IMD थ्रेशोल्ड · ${mins} मिनट पहले`
-      : `Source: Open-Meteo + IMD thresholds · ${mins} min ago`
-    : lang === 'hi'
-      ? `स्रोत: ऑफ़लाइन पैक (डेमो-सेफ) · IMD थ्रेशोल्ड`
-      : `Source: Offline pack (demo-safe) · IMD thresholds`
+  if (!wx) {
+    result.source =
+      lang === 'hi' ? 'स्रोत: मौसम अनुपलब्ध' : 'Source: weather unavailable'
+    result.cityId = null
+  } else {
+    const mins = Math.max(1, Math.round((Date.now() - (wx.fetchedAt || Date.now())) / 60000))
+    result.source = wx.live
+      ? lang === 'hi'
+        ? `स्रोत: Open-Meteo + IMD थ्रेशोल्ड · ${mins} मिनट पहले`
+        : `Source: Open-Meteo + IMD thresholds · ${mins} min ago`
+      : lang === 'hi'
+        ? `स्रोत: ऑफ़लाइन पैक (डेमो-सेफ) · IMD थ्रेशोल्ड`
+        : `Source: Offline pack (demo-safe) · IMD thresholds`
+    result.cityId = result.type === 'crop' ? wx.city?.id : wx.city?.id
+  }
 
-  result.cityId = wx.city.id
   result.intent = intent
   result.lang = lang
-  result.chips =
-    lang === 'hi'
-      ? ['मौसम भविष्यवाणी', 'जलवायु रुझान', 'NWP मॉडल', 'सिंचाई?']
-      : ['Weather prediction', 'Climate trends', 'NWP models', 'Irrigation?']
-  result.citations = wx.sources
+  if (result.type === 'crop' && result.cropId) {
+    result.chips =
+      lang === 'hi'
+        ? ['सिंचाई?', 'बारिश का असर?', 'छिड़काव?', 'कल का मौसम']
+        : ['Irrigation?', 'Rain impact?', 'Spray window?', "Tomorrow's weather"]
+  } else {
+    result.chips =
+      lang === 'hi'
+        ? ['मौसम भविष्यवाणी', 'जलवायु रुझान', 'NWP मॉडल', 'सिंचाई?']
+        : ['Weather prediction', 'Climate trends', 'NWP models', 'Irrigation?']
+  }
+  result.citations = wx?.sources || []
 
   return result
 }
@@ -1062,9 +1809,52 @@ export function welcomeMessage(wx, lang) {
   }
 }
 
-/** Public helper: which city does this message refer to? (null = stay on current) */
+/**
+ * Public helper: which GEOGRAPHIC city does this message refer to?
+ * Returns null for crop-only queries (wheat, rice, …) — never geocodes crops.
+ * For "wheat in Kanpur" returns Kanpur only.
+ */
 export async function resolveMentionedCity(message, fallback = null) {
+  const classified = classifyQuery(message, null)
+
+  // crop-only / follow-up: no place entity
+  if (isCropOnlyClassification(classified)) {
+    return fallback
+  }
+
+  // crop + location: resolve location phrase only
+  if (classified.type === 'crop_location' && classified.locationQuery) {
+    return extractCity(message, fallback)
+  }
+
+  // Bare crop token safety
+  const bare = String(message || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[?.!,;:]+$/g, '')
+  if (isCropToken(bare) || (detectCrop(bare) && bare.split(/\s+/).length <= 2)) {
+    return fallback
+  }
+
   return extractCity(message, fallback)
 }
 
-export { detectIntent, findCityLocal as findCity, wmoInfo, extractCityLocal }
+/** Expose classifier for App routing (before geocode/weather). */
+export function classifyUserQuery(message, cropContext = null) {
+  return classifyQuery(message, cropContext)
+}
+
+export {
+  detectIntent,
+  findCityLocal as findCity,
+  wmoInfo,
+  extractCityLocal,
+  detectCrop,
+  isCropQuestion,
+  isCropToken,
+  isCropFollowUp,
+  getCropById,
+  classifyQuery,
+  isCropRoute,
+  isCropOnlyClassification,
+}

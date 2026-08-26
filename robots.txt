@@ -1,0 +1,11 @@
+# WeatherGPT — allow evaluators & AI crawlers
+User-agent: *
+Allow: /
+Allow: /api/
+Allow: /llms.txt
+Allow: /openapi.json
+Allow: /sih.html
+Allow: /manifest.webmanifest
+
+# Prefer structured endpoints over SPA-only routes for automated agents
+Sitemap: /sih.html

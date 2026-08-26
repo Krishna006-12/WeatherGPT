@@ -1,0 +1,69 @@
+BROKEN LIVE SITE — ROOT CAUSE & FIX
+====================================
+URL you opened: https://weather-gpt-delta.vercel.app/
+
+WHAT YOU SAW
+------------
+Unstyled white/dark mess: city chips as plain text buttons, no glass cards,
+no sidebar layout, "Dubai" as raw headings. Looks like CSS never loaded.
+
+WHY
+---
+That deployment is NOT this workspace build.
+
+Live HTML references:
+  /assets/index-D4X2dW0B.js
+  /assets/index-DbJBjxuh.css   ← only ~3.4 KB
+
+That CSS still contains Tailwind v3 directives literally:
+  @tailwind base;
+  @tailwind components;
+  @tailwind utilities;
+
+So Tailwind never compiled. Browser ignores those rules → raw unstyled React.
+
+Someone (or another PC export) shipped a different "glassmorphism / Farmer Mode /
+Marathi-Bangla-… / Rural Relay Studio" fork with a broken CSS pipeline
+(postcss/tailwind v3 config without proper build, or CDN Tailwind missing).
+
+THIS WORKSPACE (correct)
+------------------------
+  CSS:  dist/assets/index-Bu0DMxmF.css   ~62 KB  (Tailwind v4 compiled)
+  JS:   dist/assets/index-DY1ovY3Y.js    ~959 KB
+  Features: hybrid dashboard, sidebar, AI Chat worldwide geocode,
+            Climate/NWP, Alerts SMS relay, HI+EN only (honest), etc.
+
+HOW TO FIX weather-gpt-delta.vercel.app
+---------------------------------------
+From a machine where `vercel login` works (your laptop):
+
+  1. Extract /home/user/weathergpt-deploy.zip  (or pull this repo)
+  2. cd weathergpt
+  3. rm -f postcss.config.js tailwind.config.js   # v3 leftovers break v4
+  4. npm install
+  5. npm run build
+     → confirm: dist/assets/*.css is ~60KB+, NOT 3KB
+     → confirm: CSS does NOT contain the string "@tailwind base"
+  6. npx vercel --prod --yes
+     (link to the SAME project: weather-gpt-delta)
+  7. Browser: hard refresh + Application → Service Workers → Unregister
+     + Clear site data
+
+VERIFY AFTER DEPLOY
+-------------------
+  curl -sI https://weather-gpt-delta.vercel.app/assets/<css-name>.css
+  → content-length should be ~60000+
+
+  curl -s https://weather-gpt-delta.vercel.app/ | grep assets
+  → should show index-Bu0DMxmF.css (or newer hash from THIS build)
+  → must NOT show index-DbJBjxuh.css
+
+DO NOT
+------
+  - Redeploy the broken glassmorphism fork
+  - Commit postcss.config.js for Tailwind v3 next to @import "tailwindcss"
+  - Claim Marathi/Bangla UI until i18n packs exist (honesty)
+
+LOCAL PREVIEW (this sandbox)
+----------------------------
+  npm run preview -- --host 0.0.0.0 --port 4173

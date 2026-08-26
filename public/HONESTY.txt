@@ -11,11 +11,13 @@ DEFAULT: NO network call to GPT/Gemini/Claude.
   - Strength: controllable, fast, source-attributed, demo-stable
   - Weakness: not a learned language model; limited open-ended chit-chat
 
-OPTIONAL LLM (only if operator sets server secret):
+OPTIONAL LLM (preferred: Google Gemini when key set):
   - api/chat.js
-  - Env: GEMINI_API_KEY and/or OPENAI_API_KEY
-  - Flow: tools fetch weather/alerts → LLM sees ONLY that JSON → phrasing
-  - If key missing → same deterministic answer as ai.js (no fake “AI”)
+  - Env: GEMINI_API_KEY (preferred) and/or OPENAI_API_KEY (fallback)
+  - Default model: gemini-2.0-flash (override with GEMINI_MODEL)
+  - Flow: tools fetch weather/alerts → Gemini phrases ONLY that JSON
+  - Client tries /api/chat first; falls back to src/services/ai.js templates
+  - If key missing → deterministic grounded answer (no fake “AI”)
   - We do NOT send the model permission to invent observations
 
 If asked "training data / model accuracy for rainfall":
@@ -29,9 +31,12 @@ Any older slide saying EN/HI/MR is WRONG — use EN/HI only.
 
 3) DATABASE / SUPABASE
 ----------------------
-Not wired in the shipped app.
-Prefs, chat history, notification dedupe = browser localStorage.
-Postgres/Supabase schema may appear in future docs as PLAN, not as live product.
+No cloud DB / no Supabase in the shipped app.
+On-device only:
+  - localStorage: prefs, chat history, recent cities, notification dedupe, onboarding
+  - IndexedDB (weathergpt_db): slim weather_cache packs + alert_events audit + kv mirror
+    for offline / low-bandwidth (last-good pack labelled — never fake LIVE)
+Postgres/Supabase may appear in docs as PLAN, not as live product.
 Do not tell judges "we use Supabase" unless the env + client are connected.
 
 4) ALERTS — WHAT IS LIVE

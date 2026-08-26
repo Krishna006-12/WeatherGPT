@@ -53,7 +53,30 @@ const PLACE_ALIASES = {
   lucknow: 'Lucknow',
 }
 
+
+/** Crop names must NEVER be geocoded as cities (Crop Intelligence is client-side). */
+const CROP_BLOCK = new Set(
+  [
+    'wheat', 'rice', 'maize', 'corn', 'barley', 'millet', 'sorghum', 'sugarcane', 'cotton',
+    'potato', 'tomato', 'onion', 'mustard', 'soybean', 'soya', 'groundnut', 'peanut',
+    'chickpea', 'chana', 'lentil', 'masoor', 'peas', 'pea', 'pigeon pea', 'pigeonpea',
+    'arhar', 'tur', 'apple', 'mango', 'banana', 'grapes', 'grape', 'tea', 'coffee',
+    'gehun', 'gehu', 'dhan', 'chawal', 'makka', 'ganna', 'kapas', 'aloo', 'alu', 'tamatar',
+    'pyaz', 'sarson', 'bajra', 'jowar', 'jau', 'matar', 'seb', 'aam', 'kela', 'angur',
+    'moongphali', 'mungfali', 'paddy', 'cane',
+  ].map((x) => x.toLowerCase())
+)
+
+function isCropName(q) {
+  if (!q) return false
+  const t = String(q).toLowerCase().trim().replace(/[?.!,;:]+$/g, '')
+  if (CROP_BLOCK.has(t)) return true
+  const first = t.split(/\s+/)[0]
+  return CROP_BLOCK.has(first)
+}
+
 async function geocodePlace(name) {
+  if (isCropName(name)) return null
   const q = encodeURIComponent(name)
   const url = `https://geocoding-api.open-meteo.com/v1/search?name=${q}&count=5&language=en&format=json`
   const data = await fetchJson(url, 10000)
@@ -78,23 +101,83 @@ async function geocodePlace(name) {
   }
 }
 
+const FAMOUS = [
+  'tokyo',
+  'osaka',
+  'london',
+  'paris',
+  'dubai',
+  'singapore',
+  'new york',
+  'beijing',
+  'shanghai',
+  'seoul',
+  'bangkok',
+  'sydney',
+  'melbourne',
+  'toronto',
+  'moscow',
+  'berlin',
+  'madrid',
+  'rome',
+  'istanbul',
+  'cairo',
+  'chicago',
+  'hong kong',
+  'los angeles',
+  'san francisco',
+  'japan',
+  'china',
+  'usa',
+  'uk',
+  'france',
+  'germany',
+  'australia',
+  'canada',
+  'brazil',
+  'noida',
+  'mumbai',
+  'delhi',
+  'bangalore',
+  'bengaluru',
+]
+
+const PLACE_NOISE = new Set(
+  'the a an what where when how is are was were weather forecast rain temp temperature climate please now today tomorrow right just me my of in at for to from'.split(
+    ' '
+  )
+)
+
 function extractPlaceFromMessage(message) {
   if (!message) return null
   const lower = message.toLowerCase()
+  // Bare crop query → no place (client handles Crop Intelligence)
+  const bare = lower.trim().replace(/[?.!,;:]+$/g, '')
+  if (isCropName(bare)) return null
+  if (PLACE_NOISE.has(bare) || bare.length < 3) return null
   // aliases first
   for (const [alias, canon] of Object.entries(PLACE_ALIASES)) {
     const re = new RegExp(`(?:^|[^a-z])${alias.replace(/\s+/g, '\\s+')}(?:[^a-z]|$)`, 'i')
     if (re.test(lower)) return canon
   }
-  const m = message.match(
-    /\b(?:in|at|for|near|around)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.']{1,40})/i
-  )
-  if (m?.[1]) {
-    let p = m[1]
-      .replace(/\b(right\s+now|today|tonight|tomorrow|please|now|risk|weather)\b/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-    if (p.length >= 2) return p
+  const patterns = [
+    /\b(?:weather|forecast|rain|temperature|temp|climate|aqi|travel\s+risk|conditions?)\s+(?:of|in|at|for|near|around)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.']{1,48})/i,
+    /\b(?:in|at|for|near|around|of)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.']{1,48})/i,
+    /\b([A-Za-z][A-Za-z.']{2,28}(?:\s+[A-Za-z][A-Za-z.']{2,20}){0,2})\s+(?:weather|rain|forecast|temperature|temp|aqi|climate)\b/i,
+  ]
+  for (const re of patterns) {
+    const m = message.match(re)
+    if (m?.[1]) {
+      let p = m[1]
+        .replace(/\b(right\s+now|today|tonight|tomorrow|please|now|risk|weather|forecast)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (p.length >= 2 && !PLACE_NOISE.has(p.toLowerCase()) && !isCropName(p)) return p
+    }
+  }
+  for (const name of FAMOUS) {
+    const re = new RegExp(`(?:^|[^a-z])${name.replace(/\s+/g, '\\s+')}(?:[^a-z]|$)`, 'i')
+    if (re.test(lower)) return name
   }
   return null
 }
@@ -199,37 +282,81 @@ function deterministicAnswer(wx, message, lang) {
   )
 }
 
-async function llmPhrase(wx, message, lang) {
+async function callGemini(model, system, user, apiKey) {
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent` +
+    `?key=${encodeURIComponent(apiKey)}`
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: system + '\n\n' + user }] }],
+    generationConfig: { temperature: 0.25, maxOutputTokens: 900 },
+  }
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const j = await r.json()
+  if (!r.ok) {
+    const msg = j.error?.message || 'Gemini HTTP ' + r.status
+    const err = new Error(msg)
+    err.status = r.status
+    err.raw = j
+    throw err
+  }
+  const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || ''
+  if (!text.trim()) throw new Error('Gemini empty response')
+  return text
+}
+
+async function llmPhrase(wx, message, lang, extra = {}) {
+  // Default: current Google Flash (gemini-2.0-flash was retired)
+  const preferred = process.env.GEMINI_MODEL || 'gemini-3.6-flash'
+  const geminiFallbacks = [
+    preferred,
+    'gemini-3.6-flash',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash-001',
+    'gemini-flash-latest',
+    'gemini-1.5-flash',
+  ]
+  // unique preserve order
+  const geminiModels = [...new Set(geminiFallbacks.filter(Boolean))]
+
   const system =
-    'You are WeatherGPT, a careful weather assistant for India. ' +
-    'You MUST only use facts from the provided JSON tool result. ' +
-    'Never invent temperatures, alerts, or sources. ' +
-    'If data is missing, say so. ' +
-    'Structure: short markdown with ## title, ### Now, ### Today, ### Advice, ### Source. ' +
+    'You are WeatherGPT, a careful bilingual (EN/HI) weather assistant for India. ' +
+    'You MUST only use facts from the provided JSON tool result (Open-Meteo live pack). ' +
+    'Never invent temperatures, rain %, alerts, AQI, or sources. ' +
+    'If a field is missing, say it is unavailable. ' +
+    'Do not claim to be a private foundation model. ' +
+    'Keep answers scannable: short markdown with ## title, ### Now, ### Today/Outlook, ### What you should do, ### Source. ' +
+    'In the Source section write exactly: Google Gemini + Open-Meteo (tool-grounded). ' +
+    'Numbers must match the tool JSON. ' +
+    (extra.crop
+      ? 'User asked about crop "' +
+        extra.crop +
+        '". Give crop×weather guidance only from weather JSON + general agronomy; no fake yield/disease diagnosis. Title must be Crop Intelligence, not a city named after the crop. '
+      : '') +
     (lang === 'hi' ? 'Answer in Hindi (Devanagari).' : 'Answer in clear English.')
 
   const user =
     `User question: ${message}\n\n` +
+    (extra.crop ? `Crop context: ${extra.crop}\n\n` : '') +
+    `Place for this weather pack: ${wx.place || 'unknown'}\n\n` +
     `Tool weather JSON (authoritative):\n${JSON.stringify(wx).slice(0, 12000)}`
 
+  // Prefer Google Gemini when key is present — try models until one works
   if (process.env.GEMINI_API_KEY) {
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` +
-      `?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`
-    const body = {
-      contents: [{ role: 'user', parts: [{ text: system + '\n\n' + user }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
+    const errors = []
+    for (const model of geminiModels) {
+      try {
+        const text = await callGemini(model, system, user, process.env.GEMINI_API_KEY)
+        return { text, provider: model, mode: 'llm_grounded' }
+      } catch (e) {
+        errors.push(model + ': ' + (e.message || e))
+        continue
+      }
     }
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const j = await r.json()
-    if (!r.ok) throw new Error(j.error?.message || 'Gemini HTTP ' + r.status)
-    const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || ''
-    if (!text.trim()) throw new Error('Gemini empty')
-    return { text, provider: 'gemini-2.0-flash', mode: 'llm_grounded' }
+    throw new Error(errors.slice(0, 3).join(' | ') || 'All Gemini models failed')
   }
 
   if (process.env.OPENAI_API_KEY) {
@@ -293,14 +420,16 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       service: 'WeatherGPT hybrid chat',
-      default_mode: 'deterministic_grounded',
+      preferred_llm: 'google_gemini',
+      gemini_model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+      default_mode: hasGemini ? 'llm_grounded_gemini' : hasOpenAI ? 'llm_grounded_openai' : 'deterministic_grounded',
       llm_configured: hasGemini || hasOpenAI,
       llm_providers: {
         gemini: hasGemini,
         openai: hasOpenAI,
       },
       contract:
-        'POST JSON { message, lat, lon, name?, lang? }. Tools always run first. LLM only phrases tool JSON.',
+        'POST JSON { message, lat, lon, name?, lang?, crop? }. Tools (Open-Meteo) always first. Gemini phrases tool JSON only when GEMINI_API_KEY set.',
       honesty: '/HONESTY.txt',
     })
   }
@@ -319,25 +448,31 @@ export default async function handler(req, res) {
 
     if (!message) return res.status(400).json({ ok: false, error: 'message required' })
 
+    // Crop-only messages must never re-ground tools onto a geocoded "Wheat" place.
+    // Client handles Crop Intelligence; server keeps body lat/lon/name (current city).
+    const cropOnlyMsg = isCropName(message) || isCropName(String(message).trim().split(/\s+/)[0])
+
     // If user named another city in the message, re-ground tools there
     // (fixes "travel risk in Noida" while client still sends home=Kanpur).
+    // Never geocode crop names (wheat/rice/…) — Crop Intelligence is client-side.
     let placeOverride = null
     try {
-      const mentioned = extractPlaceFromMessage(message)
-      if (mentioned) {
-        const geo = await geocodePlace(mentioned)
-        if (geo && Number.isFinite(geo.lat) && Number.isFinite(geo.lon)) {
-          // Only override if clearly different place name OR far from home coords
-          const sameName = String(geo.name).toLowerCase() === String(name).toLowerCase()
-          const dist =
-            Number.isFinite(lat) && Number.isFinite(lon)
-              ? Math.hypot(geo.lat - lat, geo.lon - lon)
-              : 99
-          if (!sameName || dist > 0.35) {
-            lat = geo.lat
-            lon = geo.lon
-            name = geo.name
-            placeOverride = geo
+      if (!cropOnlyMsg) {
+        const mentioned = extractPlaceFromMessage(message)
+        if (mentioned && !isCropName(mentioned)) {
+          const geo = await geocodePlace(mentioned)
+          if (geo && Number.isFinite(geo.lat) && Number.isFinite(geo.lon)) {
+            const sameName = String(geo.name).toLowerCase() === String(name).toLowerCase()
+            const dist =
+              Number.isFinite(lat) && Number.isFinite(lon)
+                ? Math.hypot(geo.lat - lat, geo.lon - lon)
+                : 99
+            if (!sameName || dist > 0.35) {
+              lat = geo.lat
+              lon = geo.lon
+              name = geo.name
+              placeOverride = geo
+            }
           }
         }
       }
@@ -355,8 +490,10 @@ export default async function handler(req, res) {
     let text
     let llmError = null
 
+    const cropHint = body.crop ? String(body.crop).slice(0, 48) : null
+
     try {
-      const llm = await llmPhrase(wx, message, lang)
+      const llm = await llmPhrase(wx, message, lang, { crop: cropHint })
       if (llm?.text) {
         text = llm.text
         mode = llm.mode
@@ -370,6 +507,15 @@ export default async function handler(req, res) {
       text = deterministicAnswer(wx, message, lang)
       mode = 'deterministic_grounded'
       provider = 'rules+tools'
+    }
+
+    // If client somehow hit API with bare crop, do NOT present place as the crop name
+    if (cropOnlyMsg && isCropName(name)) {
+      name = 'Area'
+      text =
+        (lang === 'hi'
+          ? '## 🌾 फसल बुद्धिमत्ता\n\nफसल का नाम स्थान नहीं है। ऐप के Crop Intelligence (client) का उपयोग करें।\n\n'
+          : '## 🌾 Crop Intelligence\n\nA crop name is not a location. Use the app Crop Intelligence path.\n\n') + text
     }
 
     return res.status(200).json({

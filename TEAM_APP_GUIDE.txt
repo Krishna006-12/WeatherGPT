@@ -454,3 +454,10 @@
     App.jsx tries /api/chat then falls back to on-device ai.js
 
 END OF FILE
+
+
+---
+BROKEN LIVE FIX (2026-08-25)
+See FIX_BROKEN_LIVE.txt
+Live weather-gpt-delta had uncompiled Tailwind v3 CSS (~3KB).
+Correct build: index-Bu0DMxmF.css ~62KB + index-DY1ovY3Y.js

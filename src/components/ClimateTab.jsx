@@ -54,9 +54,9 @@ export default function ClimateTab({ lang, city, weather }) {
   if (loading) {
     return (
       <div className="h-full p-4 space-y-3">
-        <div className="h-28 shimmer" />
-        <div className="h-40 shimmer" />
-        <div className="h-40 shimmer" />
+        <div className="h-28 shimmer-dark" />
+        <div className="h-40 shimmer-dark" />
+        <div className="h-40 shimmer-dark" />
       </div>
     )
   }
@@ -64,7 +64,7 @@ export default function ClimateTab({ lang, city, weather }) {
   if (err && !climate) {
     return (
       <div className="h-full p-4">
-        <div className="card p-4 text-[13px] text-ink-600">
+        <div className="dash-glass p-4 text-[13px] text-white/60">
           {lang === 'hi' ? 'क्लाइमेट डेटा लोड नहीं हुआ: ' : 'Climate failed: '}
           {err}
         </div>
@@ -89,22 +89,22 @@ export default function ClimateTab({ lang, city, weather }) {
       className="h-full overflow-y-auto scroll-thin px-3 sm:px-4 lg:px-5 py-4 space-y-4 max-w-4xl"
     >
       <div>
-        <h2 className="text-[16px] font-semibold text-navy-900 flex items-center gap-2">
+        <h2 className="text-[16px] font-semibold text-white flex items-center gap-2">
           <Activity className="w-4 h-4 text-sky-400" />
           {lang === 'hi' ? 'जलवायु रुझान व NWP मॉडल' : 'Climate trends & NWP models'}
         </h2>
-        <p className="text-[12px] text-ink-500 mt-0.5">
+        <p className="text-[12px] text-white/55 mt-0.5">
           {climate?.place || city?.name || '—'} ·{' '}
           {lang === 'hi' ? 'आर्काइव + मल्टी-मॉडल (SIH)' : 'Archive + multi-model (SIH)'}
         </p>
       </div>
 
       {/* Trend summary */}
-      <section className="card p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-2">
+      <section className="dash-glass p-4">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-white/40 mb-2">
           {lang === 'hi' ? '12-महीना रुझान' : '12-month trend'}
         </p>
-        <p className="text-[14px] text-navy-900 font-medium leading-relaxed">
+        <p className="text-[14px] text-white font-medium leading-relaxed">
           {lang === 'hi' ? s.trendHi || s.trendEn : s.trendEn || s.trendHi}
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
@@ -131,7 +131,7 @@ export default function ClimateTab({ lang, city, weather }) {
             value={s.heavyRainDaysGe50mm ?? '—'}
           />
         </div>
-        <p className="text-[11px] text-ink-400 mt-3">
+        <p className="text-[11px] text-white/40 mt-3">
           {climate?.source || 'Open-Meteo Archive'} ·{' '}
           {lang === 'hi'
             ? 'पुनर्विश्लेषण — आधिकारिक 30-वर्ष normal नहीं'
@@ -140,8 +140,8 @@ export default function ClimateTab({ lang, city, weather }) {
       </section>
 
       {/* Charts */}
-      <section className="card p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-3">
+      <section className="dash-glass p-4">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-white/40 mb-3">
           {lang === 'hi' ? 'मासिक औसत तापमान' : 'Monthly mean temperature'}
         </p>
         <div className="h-40">
@@ -153,7 +153,7 @@ export default function ClimateTab({ lang, city, weather }) {
                   <stop offset="100%" stopColor="#4da3e6" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={28} unit="°" />
               <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12, border: '1px solid #e2e8f0' }} />
@@ -163,14 +163,14 @@ export default function ClimateTab({ lang, city, weather }) {
         </div>
       </section>
 
-      <section className="card p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-3">
+      <section className="dash-glass p-4">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-white/40 mb-3">
           {lang === 'hi' ? 'मासिक वर्षा (मिमी)' : 'Monthly rainfall (mm)'}
         </p>
         <div className="h-36">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartTemp}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={32} />
               <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12, border: '1px solid #e2e8f0' }} />
@@ -181,20 +181,20 @@ export default function ClimateTab({ lang, city, weather }) {
       </section>
 
       {/* NWP models */}
-      <section className="card p-4">
+      <section className="dash-glass p-4">
         <div className="flex items-center gap-2 mb-2">
           <Layers className="w-4 h-4 text-sky-400" />
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-white/40">
             {lang === 'hi' ? 'NWP मॉडल तुलना' : 'NWP model comparison'}
           </p>
         </div>
-        <p className="text-[13px] text-navy-900 font-medium mb-3">
+        <p className="text-[13px] text-white font-medium mb-3">
           {lang === 'hi'
             ? models?.ensemble?.agreementHi || models?.ensemble?.agreementEn
             : models?.ensemble?.agreementEn || models?.ensemble?.agreementHi}
         </p>
         {models?.ensemble?.spreadC != null && (
-          <p className="text-[12px] text-ink-500 mb-3">
+          <p className="text-[12px] text-white/55 mb-3">
             {lang === 'hi' ? '24घं तापमान स्प्रेड: ' : '24h temp spread: '}
             <strong>{models.ensemble.spreadC}°C</strong>
             {models.ensemble.meanTemp24h != null && (
@@ -210,14 +210,14 @@ export default function ClimateTab({ lang, city, weather }) {
           {modelRows.map((m) => (
             <div
               key={m.id || m.short}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-cloud-50 border border-cloud-100"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5 border border-white/8"
             >
               <span className="text-[11px] font-bold bg-navy-900 text-white px-2 py-0.5 rounded-full w-14 text-center">
                 {m.short || m.id}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-semibold text-navy-900 truncate">{m.label || m.id}</p>
-                <p className="text-[11px] text-ink-500">
+                <p className="text-[12px] font-semibold text-white truncate">{m.label || m.id}</p>
+                <p className="text-[11px] text-white/55">
                   {lang === 'hi' ? 'अभी ' : 'Now '}
                   {m.currentTemp ?? '—'}°
                   {m.today && (
@@ -231,12 +231,12 @@ export default function ClimateTab({ lang, city, weather }) {
             </div>
           ))}
           {!modelRows.length && (
-            <p className="text-[12px] text-ink-500">
+            <p className="text-[12px] text-white/55">
               {lang === 'hi' ? 'मॉडल डेटा अनुपलब्ध' : 'Model data unavailable'}
             </p>
           )}
         </div>
-        <p className="text-[10px] text-ink-400 mt-3">
+        <p className="text-[10px] text-white/40 mt-3">
           GFS · ECMWF · ICON · best_match via Open-Meteo ·{' '}
           {lang === 'hi' ? 'स्थानीय WRF nest नहीं (क्लाउड NWP)' : 'not a local WRF nest (cloud NWP)'}
         </p>
@@ -247,14 +247,14 @@ export default function ClimateTab({ lang, city, weather }) {
 
 function Stat({ icon, label, value, unit }) {
   return (
-    <div className="bg-cloud-50 rounded-xl p-2.5 border border-cloud-100">
-      <div className="flex items-center gap-1 text-ink-400 mb-1">
+    <div className="bg-white/5 rounded-xl p-2.5 border border-white/8">
+      <div className="flex items-center gap-1 text-white/40 mb-1">
         {icon}
         <span className="text-[10px] font-medium truncate">{label}</span>
       </div>
-      <p className="text-[15px] font-semibold text-navy-900 tabular-nums">
+      <p className="text-[15px] font-semibold text-white tabular-nums">
         {value}
-        {unit && <span className="text-[10px] text-ink-400 font-medium ml-0.5">{unit}</span>}
+        {unit && <span className="text-[10px] text-white/40 font-medium ml-0.5">{unit}</span>}
       </p>
     </div>
   )

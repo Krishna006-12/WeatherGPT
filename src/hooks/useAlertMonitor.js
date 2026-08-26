@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { dbLogAlert } from '../services/db'
 import {
   fetchLiveAlertsFeed,
   getPermission,
@@ -56,12 +57,29 @@ export function useAlertMonitor({
       })
       onAlertsRef.current?.(data.alerts || [])
 
+      // Persist slim alert events to IndexedDB (audit trail, offline review)
+      const list = data.alerts || []
+      if (list.length) {
+        Promise.all(
+          list.slice(0, 12).map((a) =>
+            dbLogAlert({
+              id: a.id || a.notifyKey,
+              cityId: a.cityId || homeCityId || focusCity?.id,
+              severity: a.severity,
+              title: a.title || a.title_hi,
+              source: a.source || 'live-feed',
+              kind: 'feed',
+            }).catch(() => {})
+          )
+        ).catch(() => {})
+      }
+
       // First successful fetch: mark current as seen (no spam on enable)
-      if (!seeded.current && (data.alerts || []).length) {
-        seedSeenFromAlerts(data.alerts)
+      if (!seeded.current && list.length) {
+        seedSeenFromAlerts(list)
         seeded.current = true
       } else if (permission === 'granted' && enabled) {
-        const r = await notifyNewAlerts(data.alerts || [], {
+        const r = await notifyNewAlerts(list, {
           lang,
           minSeverity,
           maxPerTick: 3,

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WeatherGPT · SIH Evaluation Matrix</title>
+  <meta name="description" content="Static SIH checklist and public API links for WeatherGPT. Readable without JavaScript." />
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #0f172a; background: #f4f7fb; }
+    body { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; line-height: 1.5; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; }
+    h2 { font-size: 1.1rem; margin-top: 28px; border-bottom: 1px solid #d7e0eb; padding-bottom: 6px; }
+    .muted { color: #64748b; font-size: 0.95rem; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(15,23,42,.06); }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e9eef5; font-size: 0.92rem; vertical-align: top; }
+    th { background: #0b1526; color: #fff; }
+    tr:last-child td { border-bottom: 0; }
+    code, a code { background: #e9eef5; padding: 2px 6px; border-radius: 6px; font-size: 0.85rem; }
+    a { color: #1d6fb8; }
+    .ok { color: #1f9d48; font-weight: 700; }
+    .part { color: #c47a00; font-weight: 700; }
+    .card { background: #fff; border: 1px solid #e9eef5; border-radius: 12px; padding: 14px 16px; margin: 12px 0; }
+    ul { padding-left: 1.2rem; }
+    .badge { display: inline-block; background: #0b1526; color: #fff; font-size: 0.75rem; padding: 3px 8px; border-radius: 999px; }
+  </style>
+</head>
+<body>
+  <p class="badge">WeatherGPT · Smart India Hackathon</p>
+  <h1>SIH evaluation matrix (static — no JS required)</h1>
+  <p class="muted">
+    Other AIs and judges: if the React app does not load in your crawler, use the
+    <strong>JSON APIs</strong> and this page. Start at
+    <a href="/api/public"><code>/api/public</code></a> ·
+    <a href="/llms.txt"><code>/llms.txt</code></a> ·
+    <a href="/openapi.json"><code>/openapi.json</code></a>
+  </p>
+
+  <div class="card">
+    <strong>One-command smoke tests</strong>
+    <ul>
+      <li><code>/api/public?action=chat&amp;q=rain%20today&amp;lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
+      <li><code>/api/weather?lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
+      <li><code>/api/alerts?lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
+      <li><code>/api/climate?lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
+      <li><code>/api/models?lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
+    </ul>
+  </div>
+
+  <h2>Key features vs WeatherGPT</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Required feature</th><th>Status</th><th>Where in product / API</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Real-time weather retrieval</td>
+        <td class="ok">DONE</td>
+        <td>Dashboard · <code>/api/weather</code> · Open-Meteo live</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>Natural language querying</td>
+        <td class="ok">DONE*</td>
+        <td>Grounded HI/EN NLU always · optional tool-first LLM via <code>POST /api/chat</code> if server key set · <code>/HONESTY.txt</code></td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>NWP models (GFS/WRF-class)</td>
+        <td class="ok">DONE*</td>
+        <td>Climate tab · <code>/api/models</code> (GFS/ECMWF/ICON/blend). *Cloud NWP ensemble; not on-prem WRF nest.</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>Extreme weather alerts / early warning</td>
+        <td class="ok">DONE</td>
+        <td>Alerts · push notifications · GDACS + flood + model · <code>/api/alerts</code></td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>Location-based forecast &amp; advisory</td>
+        <td class="ok">DONE</td>
+        <td>Cities search · Farm / Travel / School modes · AI brief</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td>Multilingual (Indian languages)</td>
+        <td class="ok">DONE*</td>
+        <td><strong>English + Hindi only</strong> (UI + NLU + voice). Marathi not shipped. *More Indic = i18n packs.</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td>Climate trend &amp; historical analysis</td>
+        <td class="ok">DONE</td>
+        <td>Climate tab charts · <code>/api/climate</code> archive reanalysis</td>
+      </tr>
+      <tr>
+        <td>8</td>
+        <td>Voice-enabled interaction</td>
+        <td class="ok">DONE</td>
+        <td>Mic STT (hi-IN/en-IN) · Listen TTS on AI answers</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Expected solution components</h2>
+  <table>
+    <thead><tr><th>Component</th><th>Status</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Mobile conversational AI platform</td><td class="ok">DONE</td><td>PWA + responsive + chat</td></tr>
+      <tr><td>Backend met databases / APIs</td><td class="ok">DONE</td><td>Vercel serverless proxies to Open-Meteo, GDACS, flood, archive</td></tr>
+      <tr><td>AI/LLM query understanding</td><td class="ok">DONE*</td><td>Default = deterministic grounded NLU. Optional Gemini/OpenAI phrasing on tool JSON only (<code>/api/chat</code>). See <a href="/HONESTY.txt">HONESTY.txt</a>.</td></tr>
+      <tr><td>Real-time data ingestion architecture</td><td class="ok">DONE</td><td>Poll + live proxy + alert monitor ~3 min · NetworkOnly API caching</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Use cases covered</h2>
+  <ul>
+    <li><strong>Farmers</strong> — Farm mode irrigation / spray / soil</li>
+    <li><strong>Travel / urban</strong> — Travel risk, visibility, AQI</li>
+    <li><strong>Schools</strong> — heat / outdoor PE advisories</li>
+    <li><strong>Flood / disaster</strong> — GDACS + flood discharge + push + SMS/WhatsApp/IVR relay text</li>
+    <li><strong>Impact model</strong> — transparent cost/scale notes in <a href="/IMPACT_AND_SCALE.txt">IMPACT_AND_SCALE.txt</a></li>
+    <li><strong>Aviation (lite)</strong> — educational snapshot, not METAR release</li>
+    <li><strong>Researchers</strong> — climate monthly series + model spread</li>
+  </ul>
+
+  <h2>Evaluation parameters</h2>
+  <ul>
+    <li><strong>Accuracy</strong> — answers cite live packs; no invented sources</li>
+    <li><strong>Latency</strong> — edge/serverless JSON; client cache with short TTL</li>
+    <li><strong>Multilingual</strong> — HI/EN UI + voice</li>
+    <li><strong>UI / a11y</strong> — mobile PWA, focus rings, TTS listen</li>
+    <li><strong>Scalability</strong> — stateless APIs, CDN static, no DB required for demo</li>
+    <li><strong>Innovation</strong> — explainable decisions, multi-model NWP, multi-city alert watch, agent-open API</li>
+  </ul>
+
+  <h2>For other AIs that cannot “open the website”</h2>
+  <p>Many agents only fetch HTML/JSON and do not execute React. Tell them:</p>
+  <ol>
+    <li>Fetch <code>/api/public</code> for full endpoint map</li>
+    <li>Fetch <code>/llms.txt</code> for prose instructions</li>
+    <li>Call <code>/api/public?action=chat&amp;...</code> for NL answers</li>
+    <li>Use this <code>/sih.html</code> page for human-readable scoring</li>
+  </ol>
+
+  <p class="muted">College internal first round cleared · Product continues toward national SIH demo reliability.</p>
+  <p><a href="/">← Back to app</a></p>
+</body>
+</html>

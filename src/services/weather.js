@@ -7,6 +7,7 @@
  */
 
 import { CITIES, getCity } from '../data/cities'
+import { dbGetWeather, dbPutWeather, isSlowNetwork } from './db'
 
 const WMO = {
   0: { en: 'Clear sky', hi: 'साफ आसमान', icon: 'sun', severity: 'green' },
@@ -47,6 +48,71 @@ export function wmoInfo(code, lang = 'en') {
 function safeMax(arr, fallback = 0) {
   if (!arr || !arr.length) return fallback
   return Math.max(...arr.map((n) => (Number.isFinite(n) ? n : fallback)))
+}
+
+/**
+ * Honest rain-chance display (closer to what users see on Google/Apple).
+ * Open-Meteo daily `precipitation_probability_max` is the *peak hourly*
+ * probability that day — a single 40‑min shower can make the day read 95%
+ * even when total mm is tiny. We blend peak POP with expected amount + WMO
+ * code so dry/drizzle days don't look like near-certain washouts.
+ */
+export function calibratePop(rawPop, rainMm = 0, code = 0) {
+  let p = Number(rawPop)
+  if (!Number.isFinite(p)) p = 0
+  p = Math.max(0, Math.min(100, p))
+  const mm = Math.max(0, Number(rainMm) || 0)
+  const c = Number(code) || 0
+
+  // Thunderstorm / heavy shower codes — keep elevated but cap the "always 99" feel
+  if (c >= 95) return Math.round(Math.min(92, Math.max(p * 0.92, 55 + Math.min(mm, 40))))
+  if (c >= 80 && c < 90) {
+    // showers
+    const base = p * 0.85
+    const fromMm = mm < 0.2 ? 18 : mm < 1 ? 35 : mm < 5 ? 55 : mm < 15 ? 70 : 82
+    return Math.round(Math.min(88, Math.max(fromMm, base * 0.7 + fromMm * 0.3)))
+  }
+
+  // Essentially dry day: high peak POP is misleading
+  if (mm < 0.1) {
+    if (p >= 70) return Math.min(28, Math.round(p * 0.25 + 5))
+    if (p >= 40) return Math.min(22, Math.round(p * 0.35))
+    return Math.round(Math.min(p, 15))
+  }
+  if (mm < 0.5) {
+    // Trace / spit
+    return Math.round(Math.min(42, p * 0.45 + 8))
+  }
+  if (mm < 2) {
+    return Math.round(Math.min(58, p * 0.55 + 12 + mm * 4))
+  }
+  if (mm < 8) {
+    return Math.round(Math.min(78, p * 0.7 + 10 + mm * 1.5))
+  }
+  if (mm < 25) {
+    return Math.round(Math.min(88, Math.max(p * 0.85, 50 + mm)))
+  }
+  // Heavy accumulation — still avoid 99% wallpaper
+  return Math.round(Math.min(94, Math.max(p * 0.9, 70)))
+}
+
+/** Prefer day-representative POP: calibrated daily max, cross-checked with hourly peaks. */
+function dayPopFrom(dailyPopMax, rainMm, code, hourlyPopsForDay = []) {
+  const raw = dailyPopMax ?? 0
+  let peakHourly = raw
+  if (hourlyPopsForDay.length) {
+    const finite = hourlyPopsForDay.filter((n) => Number.isFinite(n))
+    if (finite.length) {
+      // Use 75th-percentile-ish of hourly (not absolute max of a single spike)
+      const sorted = [...finite].sort((a, b) => a - b)
+      const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.75))
+      const p75 = sorted[idx]
+      const mx = sorted[sorted.length - 1]
+      peakHourly = Math.round(p75 * 0.65 + mx * 0.35)
+    }
+  }
+  const blendedRaw = Math.round((Number(raw) || 0) * 0.55 + peakHourly * 0.45)
+  return calibratePop(blendedRaw || raw, rainMm, code)
 }
 
 function soilMoistureLevel(mmRecent, mmForecast, humidity) {
@@ -205,17 +271,31 @@ function parseWeather(city, raw, liveMeta = {}) {
   const soil = soilMoistureLevel(recentRain + forecastRain * 0.2, forecastRain, humidity)
 
   const times = daily.time || []
-  const days = times.slice(0, 5).map((date, i) => {
+  const hTimesAll = hourly.time || []
+  const hPopAll = hourly.precipitation_probability || []
+  const days = times.slice(0, 7).map((date, i) => {
     const dCode = (daily.weather_code || daily.weathercode || [])[i] ?? 2
     const di = wmoInfo(dCode)
+    const rainMm = +((daily.precipitation_sum?.[i] ?? 0)).toFixed(1)
+    const rawPop = daily.precipitation_probability_max?.[i] ?? 0
+    // Collect hourly POPs that fall on this calendar date (model tz / ISO date prefix)
+    const dayHourlyPops = []
+    for (let hi = 0; hi < hTimesAll.length; hi++) {
+      const ht = hTimesAll[hi]
+      if (typeof ht === 'string' && ht.slice(0, 10) === date) {
+        const pv = hPopAll[hi]
+        if (pv != null && Number.isFinite(Number(pv))) dayHourlyPops.push(Number(pv))
+      }
+    }
     return {
       date,
       weekday: new Date(date + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short' }),
       weekday_hi: new Date(date + 'T12:00:00').toLocaleDateString('hi-IN', { weekday: 'short' }),
       max: Math.round(daily.temperature_2m_max?.[i] ?? cur.temperature_2m ?? 30),
       min: Math.round(daily.temperature_2m_min?.[i] ?? (cur.temperature_2m ?? 30) - 6),
-      rain: +((daily.precipitation_sum?.[i] ?? 0)).toFixed(1),
-      pop: daily.precipitation_probability_max?.[i] ?? 0,
+      rain: rainMm,
+      pop: dayPopFrom(rawPop, rainMm, dCode, dayHourlyPops),
+      popRaw: Math.round(Number(rawPop) || 0),
       wind: Math.round(daily.wind_speed_10m_max?.[i] || 0),
       uv: daily.uv_index_max?.[i] ?? null,
       code: dCode,
@@ -244,32 +324,66 @@ function parseWeather(city, raw, liveMeta = {}) {
     })
   }
 
-  const now = Date.now()
+  // Align "now" to station timezone so past-hour filter isn't UTC-skewed
+  const tzName =
+    (typeof data.timezone === 'string' && data.timezone) ||
+    city.tz ||
+    'Asia/Kolkata'
+  let nowMs = Date.now()
+  try {
+    // Prefer Open-Meteo current.time when present
+    if (cur.time) {
+      const ct = new Date(cur.time).getTime()
+      if (!Number.isNaN(ct)) nowMs = ct
+    }
+  } catch {
+    /* keep Date.now */
+  }
   const hours = []
   const hTimes = hourly.time || []
   for (let i = 0; i < hTimes.length && hours.length < 24; i++) {
     const t = new Date(hTimes[i]).getTime()
-    if (t < now - 45 * 60 * 1000) continue
+    // Drop slots more than ~50 min in the past relative to current observation
+    if (!Number.isNaN(t) && t < nowMs - 50 * 60 * 1000) continue
     const hCode = (hourly.weather_code || hourly.weathercode || [])[i] ?? code
+    let label = ''
+    try {
+      label = new Date(hTimes[i]).toLocaleTimeString('en-IN', {
+        hour: 'numeric',
+        hour12: true,
+        timeZone: tzName,
+      })
+    } catch {
+      label = new Date(hTimes[i]).toLocaleTimeString('en-IN', { hour: 'numeric', hour12: true })
+    }
+    const hRain = hourly.precipitation?.[i] ?? 0
+    const hPopRaw = hourly.precipitation_probability?.[i] ?? 0
     hours.push({
       time: hTimes[i],
-      label: new Date(hTimes[i]).toLocaleTimeString('en-IN', { hour: 'numeric', hour12: true }),
+      label,
       temp: Math.round(hourly.temperature_2m?.[i] ?? cur.temperature_2m ?? 28),
-      pop: hourly.precipitation_probability?.[i] ?? 0,
-      rain: hourly.precipitation?.[i] ?? 0,
+      pop: calibratePop(hPopRaw, hRain, hCode),
+      popRaw: Math.round(Number(hPopRaw) || 0),
+      rain: hRain,
       code: hCode,
       icon: wmoInfo(hCode).icon,
       visibility: hourly.visibility?.[i] != null ? hourly.visibility[i] / 1000 : null,
     })
   }
 
-  // Synthetic hourly if missing
+  // Synthetic hourly if missing — start at current hour
   if (!hours.length) {
     for (let i = 0; i < 12; i++) {
-      const d = new Date(now + i * 3600000)
+      const d = new Date(nowMs + i * 3600000)
+      let label = ''
+      try {
+        label = d.toLocaleTimeString('en-IN', { hour: 'numeric', hour12: true, timeZone: tzName })
+      } catch {
+        label = d.toLocaleTimeString('en-IN', { hour: 'numeric', hour12: true })
+      }
       hours.push({
         time: d.toISOString(),
-        label: d.toLocaleTimeString('en-IN', { hour: 'numeric', hour12: true }),
+        label,
         temp: Math.round((cur.temperature_2m ?? 28) + Math.sin(i / 3) * 2),
         pop: days[0]?.pop ?? 20,
         rain: 0,
@@ -277,6 +391,17 @@ function parseWeather(city, raw, liveMeta = {}) {
         icon: info.icon,
         visibility: null,
       })
+    }
+  }
+
+  // First tray slot always mirrors live current temp (avoids hour-bucket mismatch)
+  if (hours[0] && cur.temperature_2m != null) {
+    hours[0] = {
+      ...hours[0],
+      temp: Math.round(cur.temperature_2m),
+      pop: hours[0].pop ?? days[0]?.pop ?? 0,
+      icon: info.icon,
+      code,
     }
   }
 
@@ -313,6 +438,7 @@ function parseWeather(city, raw, liveMeta = {}) {
   return {
     city,
     fetchedAt: Date.now(),
+    timezone: tzName,
     live: true,
     liveSource: liveMeta.source || raw._source || 'open-meteo',
     alertMeta: raw.alert_sources || liveMeta.alert_sources || null,
@@ -330,6 +456,7 @@ function parseWeather(city, raw, liveMeta = {}) {
       icon: info.icon,
       isDay: cur.is_day === 1 || cur.is_day === true,
       visibility: visibilityKm,
+      time: cur.time || null,
     },
     daily: days,
     hourly: hours,
@@ -389,7 +516,7 @@ function offlinePack(city) {
   const info = wmoInfo(code)
   const today = new Date()
   const daily = []
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 7; i++) {
     const d = new Date(today)
     d.setDate(d.getDate() + i)
     const iso = d.toISOString().slice(0, 10)
@@ -402,7 +529,8 @@ function offlinePack(city) {
       max: Math.round(baseTemp + 4 - i * 0.5),
       min: Math.round(baseTemp - 6),
       rain: +r.toFixed(1),
-      pop: Math.min(95, Math.round(r * 3)),
+      // Offline: keep POP honest vs mm (old r*3 hit 95 too often)
+      pop: calibratePop(Math.min(75, Math.round(r * 2.2 + 8)), r, c),
       wind: 12 + i * 2,
       uv: 7 - i * 0.5,
       code: c,
@@ -419,7 +547,11 @@ function offlinePack(city) {
       time: d.toISOString(),
       label: d.toLocaleTimeString('en-IN', { hour: 'numeric', hour12: true }),
       temp: Math.round(baseTemp + Math.sin(i / 3) * 3),
-      pop: Math.min(90, Math.round(rainBias + (i > 12 ? 10 : -5))),
+      pop: calibratePop(
+        Math.min(70, Math.round(rainBias * 0.7 + (i > 12 ? 8 : -8))),
+        i > 14 && i < 20 ? 1.2 : 0,
+        i > 14 && i < 20 ? 61 : 2
+      ),
       rain: i > 14 && i < 20 ? 1.2 : 0,
       code: i > 14 && i < 20 ? 61 : 2,
       icon: i > 14 && i < 20 ? 'cloud-rain' : 'cloud-sun',
@@ -441,6 +573,7 @@ function offlinePack(city) {
   return {
     city,
     fetchedAt: Date.now(),
+    timezone: city.tz || 'Asia/Kolkata',
     live: false,
     liveSource: 'offline',
     current: {
@@ -457,6 +590,7 @@ function offlinePack(city) {
       icon: info.icon,
       isDay: true,
       visibility: 8,
+      time: new Date().toISOString(),
     },
     daily,
     hourly,
@@ -483,7 +617,9 @@ function offlinePack(city) {
 
 const cache = new Map()
 const CACHE_TTL_LIVE = 5 * 60 * 1000
-const CACHE_TTL_OFFLINE = 30 * 1000 // retry live soon
+const CACHE_TTL_OFFLINE = 45 * 1000 // retry live soon
+const IDB_MAX_AGE = 12 * 60 * 60 * 1000 // 12h offline reuse
+const IDB_STALE_OK = 72 * 60 * 60 * 1000 // 3d last-resort offline
 
 function openMeteoDirectUrl(lat, lon, tz = 'auto') {
   return (
@@ -491,7 +627,7 @@ function openMeteoDirectUrl(lat, lon, tz = 'auto') {
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl,visibility` +
     `&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,visibility` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,uv_index_max,sunrise,sunset` +
-    `&timezone=${encodeURIComponent(tz)}&forecast_days=5`
+    `&timezone=${encodeURIComponent(tz)}&forecast_days=7`
   )
 }
 
@@ -574,7 +710,7 @@ async function fetchLiveRaw(city) {
       `&current_weather=true` +
       `&hourly=temperature_2m,precipitation_probability,weathercode,precipitation` +
       `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset` +
-      `&timezone=auto&forecast_days=5`
+      `&timezone=auto&forecast_days=7`
     const data = await fetchJson(simple, 14000)
     if (isForecastPayload(data)) return { data, source: 'open-meteo-simple' }
   } catch (e) {
@@ -594,25 +730,77 @@ export async function fetchWeather(cityOrId, { force = false } = {}) {
   if (!city?.lat || !city?.lon) throw new Error('Invalid city for weather fetch')
 
   const key = city.id
+  const slow = isSlowNetwork()
   const hit = cache.get(key)
   if (!force && hit) {
-    const ttl = hit.live ? CACHE_TTL_LIVE : CACHE_TTL_OFFLINE
+    // Longer memory TTL on slow nets to cut transfer
+    const ttl = hit.live
+      ? slow
+        ? CACHE_TTL_LIVE * 3
+        : CACHE_TTL_LIVE
+      : CACHE_TTL_OFFLINE
     if (Date.now() - hit.fetchedAt < ttl) return hit
+  }
+
+  // Low-bandwidth: serve fresh-enough IDB cache before network
+  if (!force && slow) {
+    try {
+      const disk = await dbGetWeather(key, IDB_MAX_AGE)
+      if (disk?.current) {
+        cache.set(key, { ...disk, live: !!disk.live && !disk.stale })
+        // background refresh (don't block UI)
+        refreshLiveInBackground(city, key)
+        return cache.get(key)
+      }
+    } catch {
+      /* continue live */
+    }
   }
 
   try {
     const { data, source } = await fetchLiveRaw(city)
     const parsed = parseWeather(city, data, { source })
     cache.set(key, parsed)
-    console.info('[WeatherGPT] LIVE ok via', source, city.name, parsed.current.temp + '°C')
+    // Persist async — never block render
+    dbPutWeather(key, parsed).catch(() => {})
     return parsed
   } catch (e) {
-    console.warn('[WeatherGPT] LIVE failed → offline pack:', e.message)
+    console.warn('[WeatherGPT] LIVE failed → cache/offline:', e.message)
+    // 1) IndexedDB last good pack (even stale)
+    try {
+      const disk = await dbGetWeather(key, IDB_STALE_OK)
+      if (disk?.current) {
+        const pack = {
+          ...disk,
+          live: false,
+          liveSource: 'IndexedDB cache',
+          stale: true,
+        }
+        cache.set(key, pack)
+        return pack
+      }
+    } catch {
+      /* fall through */
+    }
+    // 2) Synthetic offline pack (labelled, not fake LIVE)
     const pack = offlinePack(city)
-    // Don't poison cache long — allow quick retry
     cache.set(key, pack)
     return pack
   }
+}
+
+function refreshLiveInBackground(city, key) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+  // fire-and-forget; coalesce with short delay
+  setTimeout(() => {
+    fetchLiveRaw(city)
+      .then(({ data, source }) => {
+        const parsed = parseWeather(city, data, { source })
+        cache.set(key, parsed)
+        dbPutWeather(key, parsed).catch(() => {})
+      })
+      .catch(() => {})
+  }, 1200)
 }
 
 export function injectSimulatedAlert(weather, cityOverride) {
@@ -641,4 +829,9 @@ export function injectSimulatedAlert(weather, cityOverride) {
 export function clearCache(cityId) {
   if (cityId) cache.delete(cityId)
   else cache.clear()
+}
+
+/** Memory footprint helper for Settings / debug */
+export function memoryCacheStats() {
+  return { cities: cache.size, keys: [...cache.keys()].slice(0, 20) }
 }

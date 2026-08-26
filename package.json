@@ -9,7 +9,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "deploy": "vercel --prod",
-    "deploy:preview": "vercel"
+    "deploy:preview": "vercel",
+    "api": "node scripts/local-api-server.mjs",
+    "dev:full": "node scripts/local-api-server.mjs & vite"
   },
   "dependencies": {
     "framer-motion": "^13.1.1",

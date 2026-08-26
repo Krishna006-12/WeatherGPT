@@ -104,14 +104,14 @@ export default function AlertsTab({
   const supported = monitor?.supported !== false
 
   return (
-    <div className="h-full overflow-y-auto scroll-thin scroll-dark px-3 sm:px-4 lg:px-5 py-4">
+    <div className="h-full overflow-y-auto scroll-thin scroll-dark page-pad py-4">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
-          <h2 className="text-[16px] font-semibold text-navy-900 flex items-center gap-2">
+          <h2 className="text-[16px] font-semibold text-white flex items-center gap-2">
             <Bell className="w-4 h-4 text-alert-red" />
             {tr(lang, 'activeAlerts')}
           </h2>
-          <p className="text-[12px] text-ink-500 mt-0.5">
+          <p className="text-[12px] text-white/55 mt-0.5">
             {city ? `${city} · ` : ''}
             {lang === 'hi'
               ? 'लाइव: GDACS · Flood · मौसम थ्रेशोल्ड'
@@ -129,21 +129,21 @@ export default function AlertsTab({
       </div>
 
       {/* Push notifications card */}
-      <div className="card p-3.5 mb-3">
+      <div className="dash-glass p-3.5 mb-3">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-sky-100 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-sky-400/15 flex items-center justify-center shrink-0">
             <BellRing className="w-4 h-4 text-sky-400" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-navy-900">
+            <p className="text-[13px] font-semibold text-white">
               {lang === 'hi' ? 'पुश नोटिफिकेशन' : 'Push notifications'}
             </p>
-            <p className="text-[11px] text-ink-500 mt-0.5 leading-relaxed">
+            <p className="text-[11px] text-white/55 mt-0.5 leading-relaxed">
               {lang === 'hi'
                 ? 'वॉच शहरों (होम + दिल्ली/लखनऊ…) पर नया अलर्ट आने पर सिस्टम नोटिफिकेशन।'
                 : 'OS notification when a new alert hits watched cities (home + metros).'}
             </p>
-            <p className="text-[10px] text-ink-400 mt-1 flex items-center gap-1.5 flex-wrap">
+            <p className="text-[10px] text-white/40 mt-1 flex items-center gap-1.5 flex-wrap">
               <Radio className="w-3 h-3" />
               {supported
                 ? perm === 'granted'
@@ -166,7 +166,7 @@ export default function AlertsTab({
                 </span>
               )}
               {monitor?.polling && (
-                <span className="text-ink-400">{lang === 'hi' ? 'अपडेट…' : 'Updating…'}</span>
+                <span className="text-white/40">{lang === 'hi' ? 'अपडेट…' : 'Updating…'}</span>
               )}
             </p>
           </div>
@@ -176,7 +176,7 @@ export default function AlertsTab({
             <button
               type="button"
               onClick={() => monitor?.enablePush?.()}
-              className="text-[12px] font-semibold px-3 py-2 rounded-xl bg-navy-900 text-white pressable focus-ring"
+              className="text-[12px] font-semibold px-3 py-2 rounded-xl bg-sky-400 text-navy-950 pressable focus-ring"
             >
               {lang === 'hi' ? 'नोटिफिकेशन चालू करें' : 'Enable notifications'}
             </button>
@@ -185,19 +185,19 @@ export default function AlertsTab({
             type="button"
             onClick={() => monitor?.testNotification?.()}
             disabled={!supported}
-            className="text-[12px] font-semibold px-3 py-2 rounded-xl border border-cloud-200 text-navy-900 pressable focus-ring disabled:opacity-40"
+            className="text-[12px] font-semibold px-3 py-2 rounded-xl border border-white/15 text-white/90 pressable focus-ring disabled:opacity-40"
           >
             {lang === 'hi' ? 'टेस्ट भेजें' : 'Send test'}
           </button>
           <button
             type="button"
             onClick={() => monitor?.refresh?.()}
-            className="text-[12px] font-semibold px-3 py-2 rounded-xl border border-cloud-200 text-navy-900 pressable focus-ring inline-flex items-center gap-1"
+            className="text-[12px] font-semibold px-3 py-2 rounded-xl border border-white/15 text-white/90 pressable focus-ring inline-flex items-center gap-1"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${monitor?.polling ? 'animate-spin' : ''}`} />
             {lang === 'hi' ? 'अभी चेक' : 'Check now'}
           </button>
-          <label className="ml-auto flex items-center gap-2 text-[12px] text-ink-600">
+          <label className="ml-auto flex items-center gap-2 text-[12px] text-white/60">
             <input
               type="checkbox"
               checked={!!notifyEnabled}
@@ -207,12 +207,12 @@ export default function AlertsTab({
             {lang === 'hi' ? 'मॉनिटर ऑन' : 'Monitor on'}
           </label>
         </div>
-        <p className="text-[10px] text-ink-400 mt-2 truncate">
+        <p className="text-[10px] text-white/40 mt-2 truncate">
           <MapPin className="w-3 h-3 inline mr-1" />
           {lang === 'hi' ? 'वॉच: ' : 'Watching: '}
           {watchLabel}
         </p>
-        <p className="text-[10px] text-ink-500 mt-2 leading-relaxed">
+        <p className="text-[10px] text-white/55 mt-2 leading-relaxed">
           {lang === 'hi'
             ? 'रूरल रिले: स्मार्टफोन न होने पर स्वयंसेवक SMS/WhatsApp/IVR स्क्रिप्ट से आगे भेज सकता है। बल्क SMS गेटवे (MSG91) प्रोडक्शन प्लान — /IMPACT_AND_SCALE.txt'
             : 'Rural relay: if someone has no smartphone, a volunteer can forward via SMS/WhatsApp/IVR script. Bulk SMS gateway (MSG91) is production plan — see /IMPACT_AND_SCALE.txt'}
@@ -221,12 +221,12 @@ export default function AlertsTab({
       </div>
 
       {/* Local vs Nearby */}
-      <div className="flex gap-1 p-1 bg-cloud-100 rounded-xl border border-cloud-200 mb-3 max-w-md">
+      <div className="flex gap-1 p-1 bg-white/6 rounded-xl border border-white/10 mb-3 max-w-md">
         <button
           type="button"
           onClick={() => setTab('local')}
           className={`flex-1 py-2 rounded-lg text-[12px] font-semibold transition focus-ring ${
-            tab === 'local' ? 'bg-navy-900 text-white shadow-sm' : 'text-ink-500'
+            tab === 'local' ? 'bg-sky-400/25 text-white shadow-sm border border-white/15' : 'text-white/50'
           }`}
         >
           {lang === 'hi' ? `यहाँ (${local.length})` : `Here (${local.length})`}
@@ -235,7 +235,7 @@ export default function AlertsTab({
           type="button"
           onClick={() => setTab('nearby')}
           className={`flex-1 py-2 rounded-lg text-[12px] font-semibold transition focus-ring ${
-            tab === 'nearby' ? 'bg-navy-900 text-white shadow-sm' : 'text-ink-500'
+            tab === 'nearby' ? 'bg-sky-400/25 text-white shadow-sm border border-white/15' : 'text-white/50'
           }`}
         >
           {lang === 'hi' ? `नज़दीकी शहर (${nearby.length})` : `Nearby cities (${nearby.length})`}
@@ -263,12 +263,12 @@ export default function AlertsTab({
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="card p-6 text-center"
+          className="dash-glass p-6 text-center"
         >
           <CheckCircle2 className="w-10 h-10 text-mint-400 mx-auto mb-2" />
-          <p className="font-semibold text-navy-900">{tr(lang, 'allClear')}</p>
-          <p className="text-[13px] text-ink-500 mt-1">{tr(lang, 'noWarnings')}</p>
-          <p className="text-[11px] text-ink-400 mt-3">
+          <p className="font-semibold text-white">{tr(lang, 'allClear')}</p>
+          <p className="text-[13px] text-white/55 mt-1">{tr(lang, 'noWarnings')}</p>
+          <p className="text-[11px] text-white/40 mt-3">
             {tab === 'nearby'
               ? lang === 'hi'
                 ? 'वॉच शहरों पर अभी कोई लाइव अलर्ट नहीं — पोल हर ~3 मिनट'
@@ -293,7 +293,7 @@ export default function AlertsTab({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: Math.min(i * 0.04, 0.3), duration: 0.28 }}
                 onClick={() => setOpen(a)}
-                className="w-full text-left card overflow-hidden hover:border-sky-400/40 hover:shadow-md transition flex pressable focus-ring"
+                className="w-full text-left dash-glass overflow-hidden hover:border-sky-400/35 transition flex pressable focus-ring"
               >
                 <div className={`w-1.5 shrink-0 ${meta.bar}`} />
                 <div className="flex-1 p-3.5">
@@ -305,7 +305,7 @@ export default function AlertsTab({
                       {sourceBadge(a)}
                     </span>
                     {a.simulated && (
-                      <span className="text-[10px] bg-cloud-200 text-ink-500 px-1.5 py-0.5 rounded-full">DEMO</span>
+                      <span className="text-[10px] bg-white/15 text-white/60 px-1.5 py-0.5 rounded-full">DEMO</span>
                     )}
                     {a.place && tab === 'nearby' && (
                       <span className="text-[10px] font-semibold text-sky-400 flex items-center gap-0.5">
@@ -313,18 +313,18 @@ export default function AlertsTab({
                         {a.place}
                       </span>
                     )}
-                    <span className="text-[11px] text-ink-400 ml-auto">
+                    <span className="text-[11px] text-white/40 ml-auto">
                       {lang === 'hi' ? a.time_hi || a.time : a.time}
                     </span>
                   </div>
-                  <p className="font-semibold text-[14px] text-navy-900">
+                  <p className="font-semibold text-[14px] text-white">
                     {lang === 'hi' ? a.title_hi || a.title : a.title}
                   </p>
-                  <p className="text-[12px] text-ink-500 mt-0.5 line-clamp-2">
+                  <p className="text-[12px] text-white/55 mt-0.5 line-clamp-2">
                     {lang === 'hi' ? a.summary_hi || a.summary : a.summary}
                   </p>
                   {a.distanceKm != null && a.distanceKm > 0 && (
-                    <p className="text-[11px] text-ink-400 mt-1">
+                    <p className="text-[11px] text-white/40 mt-1">
                       ~{a.distanceKm} km
                       {a.place ? ` · ${a.place}` : ''}
                     </p>
@@ -332,28 +332,28 @@ export default function AlertsTab({
                   <div className="flex flex-wrap gap-1.5 mt-2" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
-                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-cloud-100 text-navy-900 inline-flex items-center gap-0.5"
+                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-white/10 text-white inline-flex items-center gap-0.5"
                       onClick={() => relayAlert(a, 'sms')}
                     >
                       <Phone className="w-3 h-3" /> SMS
                     </button>
                     <button
                       type="button"
-                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-cloud-100 text-navy-900 inline-flex items-center gap-0.5"
+                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-white/10 text-white inline-flex items-center gap-0.5"
                       onClick={() => relayAlert(a, 'wa')}
                     >
                       <MessageCircle className="w-3 h-3" /> WhatsApp
                     </button>
                     <button
                       type="button"
-                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-cloud-100 text-navy-900"
+                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-white/10 text-white"
                       onClick={() => relayAlert(a, 'ivr')}
                     >
                       IVR
                     </button>
                     <button
                       type="button"
-                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-cloud-100 text-navy-900 inline-flex items-center gap-0.5"
+                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-white/10 text-white inline-flex items-center gap-0.5"
                       onClick={() => relayAlert(a, 'share')}
                     >
                       <Share2 className="w-3 h-3" />
@@ -361,7 +361,7 @@ export default function AlertsTab({
                     </button>
                   </div>
                 </div>
-                <div className="flex items-center pr-3 text-ink-400">
+                <div className="flex items-center pr-3 text-white/40">
                   <ChevronRight className="w-4 h-4" />
                 </div>
               </motion.button>
@@ -372,8 +372,8 @@ export default function AlertsTab({
 
       {/* Sources footer */}
       {(nearbyFeed?.sources || weather?.sources) && (
-        <div className="mt-4 text-[11px] text-ink-400 space-y-0.5">
-          <p className="font-semibold text-ink-500 uppercase tracking-wider text-[10px]">
+        <div className="mt-4 text-[11px] text-white/40 space-y-0.5">
+          <p className="font-semibold text-white/55 uppercase tracking-wider text-[10px]">
             {lang === 'hi' ? 'स्रोत' : 'Sources'}
           </p>
           {(nearbyFeed?.sources || []).map((s) => (
@@ -398,7 +398,7 @@ export default function AlertsTab({
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 24, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-              className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl"
+              className="dash-glass max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex gap-0">
@@ -408,11 +408,11 @@ export default function AlertsTab({
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${severityMeta(open.severity).cls}`}>
                       {severityMeta(open.severity).label}
                     </span>
-                    <span className="text-[11px] font-bold tracking-widest uppercase text-ink-400">
+                    <span className="text-[11px] font-bold tracking-widest uppercase text-white/40">
                       {open.severity} WARNING
                     </span>
                   </div>
-                  <h3 className="text-[20px] font-semibold text-navy-900 leading-snug">
+                  <h3 className="text-[20px] font-semibold text-white leading-snug">
                     {lang === 'hi' ? open.title_hi || open.title : open.title}
                   </h3>
                   <div className="flex items-center gap-2 mt-2 mb-4 flex-wrap">
@@ -420,34 +420,34 @@ export default function AlertsTab({
                       {open.source || 'MODEL'}
                     </span>
                     {open.external && (
-                      <span className="text-[10px] bg-mint-400/20 text-navy-900 px-2 py-0.5 rounded-full font-semibold">
+                      <span className="text-[10px] bg-mint-400/20 text-white px-2 py-0.5 rounded-full font-semibold">
                         LIVE FEED
                       </span>
                     )}
                     {(open.place || city) && (
-                      <span className="text-[12px] text-ink-500">{open.place || city}</span>
+                      <span className="text-[12px] text-white/55">{open.place || city}</span>
                     )}
                   </div>
-                  <div className="bg-cloud-50 border border-cloud-200 rounded-xl p-3.5 text-[13px] leading-relaxed text-ink-700 whitespace-pre-wrap">
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 text-[13px] leading-relaxed text-white/75 whitespace-pre-wrap">
                     {lang === 'hi'
                       ? open.officialText_hi || open.officialText || open.summary_hi || open.summary
                       : open.officialText || open.summary}
                   </div>
                   <div className="mt-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/55 mb-1.5">
                       {lang === 'hi' ? 'इसका आपके लिए मतलब' : 'What it means for you'}
                     </p>
-                    <p className="text-[14px] text-navy-900 leading-relaxed">
+                    <p className="text-[14px] text-white leading-relaxed">
                       {lang === 'hi'
                         ? open.meansForYou_hi || open.meansForYou || '—'
                         : open.meansForYou || '—'}
                     </p>
                   </div>
-                  <div className="mt-3 card-soft bg-sky-100/40 border border-sky-100 rounded-xl p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1">
+                  <div className="mt-3 bg-sky-400/10 border border-sky-400/20 rounded-xl p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/55 mb-1">
                       {lang === 'hi' ? 'क्या करें' : 'What you should do'}
                     </p>
-                    <p className="text-[13px] text-ink-700 leading-relaxed">
+                    <p className="text-[13px] text-white/70 leading-relaxed">
                       {open.severity === 'red' || open.severity === 'amber'
                         ? lang === 'hi'
                           ? 'गैर-ज़रूरी बाहर निकलना सीमित करें, आधिकारिक अपडेट देखें।'
@@ -461,28 +461,28 @@ export default function AlertsTab({
                     <button
                       type="button"
                       onClick={() => relayAlert(open, 'sms')}
-                      className="py-2 rounded-xl border border-cloud-200 text-[12px] font-semibold"
+                      className="py-2 rounded-xl border border-white/15 text-[12px] font-semibold text-white/85"
                     >
                       SMS text
                     </button>
                     <button
                       type="button"
                       onClick={() => relayAlert(open, 'wa')}
-                      className="py-2 rounded-xl border border-cloud-200 text-[12px] font-semibold"
+                      className="py-2 rounded-xl border border-white/15 text-[12px] font-semibold text-white/85"
                     >
                       WhatsApp
                     </button>
                     <button
                       type="button"
                       onClick={() => relayAlert(open, 'ivr')}
-                      className="py-2 rounded-xl border border-cloud-200 text-[12px] font-semibold"
+                      className="py-2 rounded-xl border border-white/15 text-[12px] font-semibold text-white/85"
                     >
                       {lang === 'hi' ? 'IVR कॉपी' : 'Copy IVR'}
                     </button>
                     <button
                       type="button"
                       onClick={() => relayAlert(open, 'share')}
-                      className="py-2 rounded-xl border border-cloud-200 text-[12px] font-semibold"
+                      className="py-2 rounded-xl border border-white/15 text-[12px] font-semibold text-white/85"
                     >
                       {lang === 'hi' ? 'शेयर' : 'Share'}
                     </button>
@@ -490,7 +490,7 @@ export default function AlertsTab({
                   <button
                     type="button"
                     onClick={() => setOpen(null)}
-                    className="mt-3 w-full py-2.5 rounded-xl bg-navy-900 text-white text-[14px] font-medium hover:bg-navy-700 pressable focus-ring"
+                    className="mt-3 w-full py-2.5 rounded-xl bg-sky-400 text-navy-950 text-[14px] font-semibold hover:bg-sky-300 pressable focus-ring"
                   >
                     {lang === 'hi' ? 'बंद करें' : 'Close'}
                   </button>

@@ -1,6 +1,9 @@
 /**
  * Persistent local storage — product-grade preferences & history
+ * Primary: localStorage (sync, tiny). Mirror: IndexedDB kv (durable backup).
  */
+
+import { dbKvSet } from './db'
 
 const KEYS = {
   prefs: 'wgpt_prefs_v2',
@@ -26,6 +29,8 @@ function write(key, val) {
   } catch {
     /* quota */
   }
+  // Fire-and-forget IDB mirror (survives some storage clears / larger payloads)
+  dbKvSet(key, val).catch(() => {})
 }
 
 export const defaultPrefs = {

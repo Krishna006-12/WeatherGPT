@@ -20,16 +20,16 @@ export default function SchoolTab({ lang, weather, aqi }) {
       ? 'bg-alert-red/10 text-alert-red border-alert-red/30'
       : s.heatStress === 'moderate'
         ? 'bg-sun-400/15 text-sun-400 border-sun-400/30'
-        : 'bg-mint-400/15 text-navy-800 border-mint-400/30'
+        : 'bg-mint-400/15 text-mint-300 border-mint-400/30'
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="h-full overflow-y-auto scroll-thin scroll-dark px-3 sm:px-4 py-4 space-y-3">
       <div>
-        <h2 className="text-[16px] font-semibold text-navy-900 flex items-center gap-2">
+        <h2 className="text-[16px] font-semibold text-white flex items-center gap-2">
           <GraduationCap className="w-4 h-4 text-sun-400" />
           {lang === 'hi' ? 'स्कूल मोड' : 'School Mode'}
         </h2>
-        <p className="text-[12px] text-ink-500">
+        <p className="text-[12px] text-white/55">
           {lang === 'hi'
             ? 'चरम मौसम · आउटडोर · हीट रिस्क'
             : 'Extreme weather · outdoor · heat risk'}
@@ -73,12 +73,12 @@ export default function SchoolTab({ lang, weather, aqi }) {
         <div className="bg-sky-100/60 border border-sky-400/20 rounded-2xl p-3.5 flex gap-3">
           <Sun className="w-5 h-5 text-sun-400 shrink-0" />
           <div>
-            <p className="text-[12px] font-semibold text-navy-900">
+            <p className="text-[12px] font-semibold text-white">
               {lang === 'hi' ? 'सबसे अच्छी आउटडोर खिड़की' : 'Best outdoor window'}
             </p>
-            <p className="text-[15px] font-semibold text-navy-900">
+            <p className="text-[15px] font-semibold text-white">
               ~{s.bestOutdoor.time}
-              <span className="text-[12px] font-normal text-ink-500 ml-2">
+              <span className="text-[12px] font-normal text-white/55 ml-2">
                 {s.bestOutdoor.temp}°C · rain {s.bestOutdoor.pop}%
               </span>
             </p>
@@ -87,14 +87,14 @@ export default function SchoolTab({ lang, weather, aqi }) {
       )}
 
       {/* Extreme warnings */}
-      <div className="bg-white border border-cloud-200 rounded-2xl p-3.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2 flex items-center gap-1">
+      <div className="bg-white/6 border border-white/10 rounded-2xl p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-white/55 mb-2 flex items-center gap-1">
           <CloudLightning className="w-3.5 h-3.5 text-alert-red" />
           {lang === 'hi' ? 'चरम मौसम चेतावनी' : 'Extreme weather warning'}
         </p>
         <ul className="space-y-2">
           {s.extreme.map((e, i) => (
-            <li key={i} className="text-[13px] text-ink-700 leading-snug flex gap-2">
+            <li key={i} className="text-[13px] text-white/70 leading-snug flex gap-2">
               <span className="text-alert-red shrink-0">•</span>
               {e}
             </li>
@@ -103,14 +103,14 @@ export default function SchoolTab({ lang, weather, aqi }) {
       </div>
 
       {/* Recommendations */}
-      <div className="bg-white border border-cloud-200 rounded-2xl p-3.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2 flex items-center gap-1">
+      <div className="bg-white/6 border border-white/10 rounded-2xl p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-white/55 mb-2 flex items-center gap-1">
           <Users className="w-3.5 h-3.5 text-sky-400" />
           {lang === 'hi' ? 'स्कूल सुझाव' : 'School recommendations'}
         </p>
         <ul className="space-y-2">
           {s.recommendations.map((r, i) => (
-            <li key={i} className="text-[13px] text-ink-700 flex gap-2 leading-snug">
+            <li key={i} className="text-[13px] text-white/70 flex gap-2 leading-snug">
               <CheckCircle2 className="w-4 h-4 text-mint-400 shrink-0 mt-0.5" />
               {r}
             </li>
@@ -124,20 +124,20 @@ export default function SchoolTab({ lang, weather, aqi }) {
           className={`rounded-2xl border p-3.5 ${
             aqiBad
               ? 'bg-alert-red/10 border-alert-red/30'
-              : 'bg-white border-cloud-200'
+              : 'bg-white/6 border-white/10'
           }`}
         >
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1 flex items-center gap-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/55 mb-1 flex items-center gap-1">
             <Wind className="w-3.5 h-3.5 text-sky-400" />
             {lang === 'hi' ? 'वायु गुणवत्ता (PE)' : 'Air quality (PE)'}
           </p>
-          <p className="text-[18px] font-semibold text-navy-900">
+          <p className="text-[18px] font-semibold text-white">
             AQI {aqi.aqi}
-            <span className="text-[12px] font-medium text-ink-500 ml-2">
+            <span className="text-[12px] font-medium text-white/55 ml-2">
               {lang === 'hi' ? aqi.band.hi : aqi.band.en}
             </span>
           </p>
-          <p className="text-[12px] text-ink-600 mt-1 leading-relaxed">{aqi.advice(lang)}</p>
+          <p className="text-[12px] text-white/60 mt-1 leading-relaxed">{aqi.advice(lang)}</p>
           {aqiBad && (
             <p className="text-[12px] font-semibold text-alert-red mt-1.5">
               {lang === 'hi'
@@ -155,7 +155,7 @@ export default function SchoolTab({ lang, weather, aqi }) {
         <Mini label={lang === 'hi' ? 'हवा' : 'Wind'} value={`${s.wind}`} unit="km/h" />
       </div>
 
-      <p className="text-[10px] text-ink-400 text-center pb-2">
+      <p className="text-[10px] text-white/40 text-center pb-2">
         {lang === 'hi'
           ? 'सलाह शैक्षिक है — अंतिम निर्णय प्रधानाचार्य / जिला प्रशासन के अनुसार'
           : 'Advisory only — final call rests with principal / district admin'}
@@ -166,11 +166,11 @@ export default function SchoolTab({ lang, weather, aqi }) {
 
 function Mini({ label, value, unit }) {
   return (
-    <div className="bg-cloud-50 border border-cloud-200 rounded-xl p-2.5 text-center">
-      <p className="text-[10px] text-ink-400">{label}</p>
-      <p className="text-[15px] font-semibold text-navy-900">
+    <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 text-center">
+      <p className="text-[10px] text-white/40">{label}</p>
+      <p className="text-[15px] font-semibold text-white">
         {value}
-        {unit && <span className="text-[9px] text-ink-400 ml-0.5">{unit}</span>}
+        {unit && <span className="text-[9px] text-white/40 ml-0.5">{unit}</span>}
       </p>
     </div>
   )
