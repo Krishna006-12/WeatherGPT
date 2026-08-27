@@ -10,8 +10,8 @@ import {
   registerCity,
   findCityLocal,
   normalizePlaceQuery,
-} from '../data/cities'
-import { isCropToken, detectCrop, allCropStopwords } from '../data/crops'
+} from '../data/cities.js'
+import { isCropToken, detectCrop, allCropStopwords } from '../data/crops.js'
 
 /** Blocklist: crop names must never become geocode hits / Recent cities */
 const CROP_QUERY_RE = (() => {

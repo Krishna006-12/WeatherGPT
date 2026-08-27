@@ -3,16 +3,16 @@
  * prediction / travel / school intents, grounded on live weather pack.
  */
 
-import { findCityLocal, CITIES, allKnownCities, normalizePlaceQuery, CITY_ALIASES } from '../data/cities'
-import { resolveCity } from './geocode'
-import { wmoInfo } from './weather'
+import { findCityLocal, CITIES, allKnownCities, normalizePlaceQuery, CITY_ALIASES } from '../data/cities.js'
+import { resolveCity } from './geocode.js'
+import { wmoInfo } from './weather.js'
 import {
   buildPrediction,
   buildTravelInsight,
   buildSchoolInsight,
   predictionSummaryText,
   estimateVisibility,
-} from './insights'
+} from './insights.js'
 import {
   detectCrop,
   isCropToken,
@@ -20,8 +20,8 @@ import {
   isCropFollowUp,
   allCropStopwords,
   getCropById,
-} from '../data/crops'
-import { classifyQuery, isCropRoute, isCropOnlyClassification } from './queryClassify'
+} from '../data/crops.js'
+import { classifyQuery, isCropRoute, isCropOnlyClassification } from './queryClassify.js'
 
 /** Words that are never place names (voice + typed) */
 const PLACE_STOP = new Set(

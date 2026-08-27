@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Bell, Database, Gauge, Home, Languages, RotateCcw, Shield, Smartphone, Thermometer, Wifi } from 'lucide-react'
-import { clearChatHistory } from '../services/storage'
-import { CITY_LIST } from '../data/cities'
-import { dbStats, networkHint } from '../services/db'
-import { memoryCacheStats } from '../services/weather'
+import { clearChatHistory } from '../services/storage.js'
+import { CITY_LIST } from '../data/cities.js'
+import { dbStats, networkHint } from '../services/db.js'
+import { memoryCacheStats } from '../services/weather.js'
 import { motion } from 'framer-motion'
 
 export default function SettingsTab({ lang, prefs, onChangePrefs, onResetOnboarding, cityId, monitor }) {

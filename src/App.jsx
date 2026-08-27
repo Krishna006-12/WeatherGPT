@@ -19,9 +19,9 @@ import {
   CalendarDays,
   Activity,
 } from 'lucide-react'
-import { CITIES, CITY_LIST, getCity, registerCity } from './data/cities'
-import { tr } from './data/i18n'
-import { fetchWeather, injectSimulatedAlert, clearCache } from './services/weather'
+import { CITIES, CITY_LIST, getCity, registerCity } from './data/cities.js'
+import { tr } from './data/i18n.js'
+import { fetchWeather, injectSimulatedAlert, clearCache } from './services/weather.js'
 import {
   chat,
   welcomeMessage,
@@ -31,8 +31,8 @@ import {
   classifyUserQuery,
   isCropRoute,
   isCropOnlyClassification,
-} from './services/ai'
-import { fetchAQI } from './services/aqi'
+} from './services/ai.js'
+import { fetchAQI } from './services/aqi.js'
 import {
   loadPrefs,
   savePrefs,
@@ -42,11 +42,11 @@ import {
   saveChatHistory,
   toDisplayTemp,
   tempUnitLabel,
-} from './services/storage'
-import { dbLogAlert } from './services/db'
-import { WeatherIcon, SeverityDot } from './components/Icons'
+} from './services/storage.js'
+import { dbLogAlert } from './services/db.js'
+import { WeatherIcon, SeverityDot } from './components/Icons.jsx'
 // Eager: home dashboard (first paint). Rest: code-split for low bandwidth.
-import DashboardTab from './components/DashboardTab'
+import DashboardTab from './components/DashboardTab.jsx'
 const ChatTab = lazy(() => import('./components/ChatTab'))
 const AlertsTab = lazy(() => import('./components/AlertsTab'))
 const FarmTab = lazy(() => import('./components/FarmTab'))
@@ -68,7 +68,7 @@ function TabFallback() {
     </div>
   )
 }
-import { useAlertMonitor } from './hooks/useAlertMonitor'
+import { useAlertMonitor } from './hooks/useAlertMonitor.js'
 
 const TABS = [
   { id: 'home', icon: LayoutDashboard, labelKey: 'home' },

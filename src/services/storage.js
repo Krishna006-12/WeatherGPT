@@ -3,7 +3,7 @@
  * Primary: localStorage (sync, tiny). Mirror: IndexedDB kv (durable backup).
  */
 
-import { dbKvSet } from './db'
+import { dbKvSet } from './db.js'
 
 const KEYS = {
   prefs: 'wgpt_prefs_v2',

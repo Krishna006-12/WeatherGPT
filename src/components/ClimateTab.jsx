@@ -12,7 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 import { Activity, CloudRain, Layers, Thermometer } from 'lucide-react'
-import { fetchClimate, fetchModels } from '../services/climate'
+import { fetchClimate, fetchModels } from '../services/climate.js'
 
 export default function ClimateTab({ lang, city, weather }) {
   const [climate, setClimate] = useState(null)

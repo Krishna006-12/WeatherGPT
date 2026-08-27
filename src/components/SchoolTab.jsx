@@ -1,5 +1,5 @@
 import { GraduationCap, Sun, Thermometer, Users, CloudLightning, CheckCircle2, Wind } from 'lucide-react'
-import { buildSchoolInsight } from '../services/insights'
+import { buildSchoolInsight } from '../services/insights.js'
 import { motion } from 'framer-motion'
 
 export default function SchoolTab({ lang, weather, aqi }) {

@@ -1,6 +1,6 @@
 import { AlertTriangle, Car, CloudRain, Eye, Shield, Wind, Clock, Activity } from 'lucide-react'
-import { buildTravelInsight } from '../services/insights'
-import { tr } from '../data/i18n'
+import { buildTravelInsight } from '../services/insights.js'
+import { tr } from '../data/i18n.js'
 import { motion } from 'framer-motion'
 
 export default function TravelTab({ lang, weather, aqi }) {

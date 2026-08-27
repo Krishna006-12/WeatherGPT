@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { dbLogAlert } from '../services/db'
+import { dbLogAlert } from '../services/db.js'
 import {
   fetchLiveAlertsFeed,
   getPermission,
@@ -9,7 +9,7 @@ import {
   seedSeenFromAlerts,
   showAlertNotification,
   loadWatchList,
-} from '../services/notifications'
+} from '../services/notifications.js'
 
 const POLL_MS = 3 * 60 * 1000 // 3 min — proper-app cadence without hammering free APIs
 const MIN_SEVERITY_DEFAULT = 'yellow'

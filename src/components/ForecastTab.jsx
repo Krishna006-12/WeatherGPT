@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
-import { WeatherIcon } from './Icons'
-import { tr } from '../data/i18n'
+import { WeatherIcon } from './Icons.jsx'
+import { tr } from '../data/i18n.js'
 import {
   CloudRain,
   Droplets,

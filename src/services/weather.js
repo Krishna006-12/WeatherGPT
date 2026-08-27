@@ -6,8 +6,8 @@
  * 4) Offline pack only if everything fails
  */
 
-import { CITIES, getCity } from '../data/cities'
-import { dbGetWeather, dbPutWeather, isSlowNetwork } from './db'
+import { CITIES, getCity } from '../data/cities.js'
+import { dbGetWeather, dbPutWeather, isSlowNetwork } from './db.js'
 
 const WMO = {
   0: { en: 'Clear sky', hi: 'साफ आसमान', icon: 'sun', severity: 'green' },
