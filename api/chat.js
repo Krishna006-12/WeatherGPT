@@ -1,16 +1,232 @@
 /**
  * POST /api/chat
- * Body JSON: { message, lat, lon, name, lang }
+ * Body JSON: { message, lat?, lon?, name?, lang?, crop? }
  *
- * Hybrid AI:
- *  1) Always fetch live weather tools (grounding)
- *  2) If GEMINI_API_KEY or OPENAI_API_KEY set → LLM phrases answer from tool JSON only
- *  3) Else → deterministic grounded template (no fake "neural" claim)
+ * Architecture:
+ *   USER → Intent Router
+ *     ├─ general  → AI Provider Manager (Groq→OpenRouter→Gemini→OpenAI)
+ *     └─ weather/crop → Open-Meteo → Crop/Weather Engine
+ *                      → AI Provider Manager → Response Validator → UI
+ *   If everything fails → Rules + Weather Data (always free)
  *
  * GET /api/chat → capability discovery
  */
 
 const UA = { Accept: 'application/json', 'User-Agent': 'WeatherGPT/2.2-chat' }
+
+/** Normalize one API key string */
+function sanitizeKey(raw) {
+  let k = String(raw || '').trim()
+  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
+    k = k.slice(1, -1).trim()
+  }
+  k = k.replace(/^\uFEFF/, '').replace(/[\u200B-\u200D\uFEFF]/g, '')
+  return k
+}
+
+/**
+ * Free-tier survival: support MULTIPLE Gemini keys.
+ * Vercel: GEMINI_API_KEY=key1,key2,key3
+ * or GEMINI_API_KEY + GEMINI_API_KEY_2 + GEMINI_API_KEY_3
+ * When one hits daily quota, rotate to the next.
+ */
+function getGeminiKeys() {
+  const parts = []
+  const primary =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    ''
+  for (const chunk of String(primary).split(/[,;\n]+/)) {
+    const k = sanitizeKey(chunk)
+    if (k.length >= 20) parts.push(k)
+  }
+  for (const envName of ['GEMINI_API_KEY_2', 'GEMINI_API_KEY_3', 'GEMINI_API_KEY_4', 'GOOGLE_API_KEY_2']) {
+    const k = sanitizeKey(process.env[envName] || '')
+    if (k.length >= 20) parts.push(k)
+  }
+  return [...new Set(parts)]
+}
+
+function getGeminiKey() {
+  return getGeminiKeys()[0] || ''
+}
+
+function isQuotaError(msg) {
+  return /quota|rate limit|resource.?exhausted|429|exceeded your current|billing details|RPD|RPM/i.test(
+    String(msg || ''),
+  )
+}
+
+/**
+ * Free multi-provider AI (any one key works):
+ *  1) GROQ_API_KEY     → https://console.groq.com  (fast, free tier, no card)
+ *  2) OPENROUTER_API_KEY → https://openrouter.ai   (free models, no card)
+ *  3) GEMINI_API_KEY(s)  → Google AI Studio
+ *  4) OPENAI_API_KEY     → paid OpenAI (optional)
+ *
+ * Order: Groq → OpenRouter free → Gemini → OpenAI
+ */
+function getOpenAiCompatProviders() {
+  const out = []
+  const groq = sanitizeKey(process.env.GROQ_API_KEY || '')
+  if (groq.length >= 10) {
+    const models = String(process.env.GROQ_MODEL || 'llama-3.3-70b-versatile,llama-3.1-8b-instant')
+      .split(/[,;]+/)
+      .map((m) => m.trim())
+      .filter(Boolean)
+    out.push({
+      id: 'groq',
+      label: 'Groq',
+      base: 'https://api.groq.com/openai/v1',
+      key: groq,
+      models: models.length ? models : ['llama-3.3-70b-versatile'],
+    })
+  }
+  const ork = sanitizeKey(process.env.OPENROUTER_API_KEY || '')
+  if (ork.length >= 10) {
+    const models = String(
+      process.env.OPENROUTER_MODEL ||
+        'meta-llama/llama-3.3-70b-instruct:free,google/gemma-3-27b-it:free,qwen/qwen-2.5-72b-instruct:free',
+    )
+      .split(/[,;]+/)
+      .map((m) => m.trim())
+      .filter(Boolean)
+    out.push({
+      id: 'openrouter',
+      label: 'OpenRouter',
+      base: 'https://openrouter.ai/api/v1',
+      key: ork,
+      models: models.length ? models : ['meta-llama/llama-3.3-70b-instruct:free'],
+      headers: {
+        'HTTP-Referer': process.env.OPENROUTER_SITE || 'https://weather-gpt-delta.vercel.app',
+        'X-Title': 'WeatherGPT',
+      },
+    })
+  }
+  const oai = sanitizeKey(process.env.OPENAI_API_KEY || '')
+  if (oai.length >= 10) {
+    out.push({
+      id: 'openai',
+      label: 'OpenAI',
+      base: 'https://api.openai.com/v1',
+      key: oai,
+      models: [process.env.OPENAI_MODEL || 'gpt-4o-mini'],
+    })
+  }
+  return out
+}
+
+async function callOpenAiCompat(provider, model, system, user, timeoutMs = 20000) {
+  const url = provider.base.replace(/\/$/, '') + '/chat/completions'
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), timeoutMs)
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + provider.key,
+        ...(provider.headers || {}),
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.35,
+        max_tokens: 900,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+      }),
+      signal: ac.signal,
+    })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) {
+      const msg = j.error?.message || j.message || provider.id + ' HTTP ' + r.status
+      const err = new Error(msg)
+      err.status = r.status
+      throw err
+    }
+    const text = j.choices?.[0]?.message?.content || ''
+    if (!text.trim()) throw new Error(provider.id + ' empty response')
+    return text
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || /aborted/i.test(String(e.message || '')))) {
+      throw new Error(provider.id + ' timeout after ' + timeoutMs + 'ms')
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Try Groq / OpenRouter / OpenAI then caller may try Gemini */
+async function callCompatLlms(system, user, modeTag) {
+  const providers = getOpenAiCompatProviders()
+  const errors = []
+  let sawQuota = false
+  for (const p of providers) {
+    for (const model of p.models.slice(0, 3)) {
+      try {
+        const text = await callOpenAiCompat(p, model, system, user, 18000)
+        return {
+          text,
+          provider: p.id + ':' + model,
+          mode: modeTag,
+          label: p.label,
+        }
+      } catch (e) {
+        const msg = String(e.message || e)
+        errors.push(p.id + '/' + model + ': ' + msg.slice(0, 100))
+        if (isQuotaError(msg)) {
+          sawQuota = true
+          break
+        }
+        continue
+      }
+    }
+  }
+  if (!providers.length) return null
+  const err = new Error(
+    (sawQuota ? 'QUOTA: ' : '') + (errors.slice(0, 4).join(' | ') || 'compat LLMs failed'),
+  )
+  err.quota = sawQuota
+  err.compatTried = true
+  throw err
+}
+
+
+function getGeminiModels() {
+  // Free tier: prefer Flash-Lite (higher free RPM/RPD) then Flash.
+  // Avoid retired 2.x for new keys. Env GEMINI_MODEL overrides first pick if still valid.
+  const envModel = (process.env.GEMINI_MODEL || '').trim().replace(/["']/g, '')
+  const BLOCKED = /gemini-2\.5-flash$|gemini-2\.0-flash|gemini-1\.5|gemini-pro$/i
+  const freeFirst = (process.env.GEMINI_FREE_TIER || '1') !== '0'
+  const preferred =
+    envModel && !BLOCKED.test(envModel)
+      ? envModel
+      : freeFirst
+        ? 'gemini-3.5-flash-lite'
+        : 'gemini-3.6-flash'
+  const list = freeFirst
+    ? [
+        preferred,
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-3.6-flash',
+        'gemini-3.5-flash',
+        'gemini-flash-latest',
+      ]
+    : [
+        preferred,
+        'gemini-3.6-flash',
+        'gemini-3.7-flash',
+        'gemini-3.5-flash',
+        'gemini-flash-latest',
+      ]
+  if (envModel && BLOCKED.test(envModel)) list.push(envModel)
+  return [...new Set(list.filter(Boolean))].slice(0, 4)
+}
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -143,9 +359,11 @@ const FAMOUS = [
 ]
 
 const PLACE_NOISE = new Set(
-  'the a an what where when how is are was were weather forecast rain temp temperature climate please now today tomorrow right just me my of in at for to from'.split(
-    ' '
-  )
+  (
+    'the a an what where when how is are was were weather forecast rain temp temperature climate please now today tomorrow right just me my of in at for to from ' +
+    'good bad why exactly sentences sentence explain ignore normal format current mention uncertainty recommendation ' +
+    'capital france who president history define meaning translate jungle forest mountain river'
+  ).split(' ')
 )
 
 function extractPlaceFromMessage(message) {
@@ -232,159 +450,420 @@ function wmoEn(code) {
   return m[code] || `Code ${code}`
 }
 
-function deterministicAnswer(wx, message, lang) {
+function deterministicAnswer(wx, message, lang, meta = {}) {
   const hi = lang === 'hi' || /[\u0900-\u097F]/.test(message || '')
-  const c = wx.current
-  const d0 = wx.daily[0] || {}
+  const c = wx.current || {}
+  const d0 = (wx.daily && wx.daily[0]) || {}
+  const d1 = (wx.daily && wx.daily[1]) || {}
   const cond = wmoEn(c.weather_code)
   const q = (message || '').toLowerCase()
-  const city = wx.place
+  const city = wx.place || 'your area'
+  const temp = Math.round(c.temp_c)
+  const feels = Math.round(c.feels_c)
+  const hum = Math.round(c.humidity_pct)
+  const wind = Math.round(c.wind_kmh)
+  const pop = d0.pop_pct ?? '—'
+  const rain = d0.rain_mm ?? 0
+  const hiT = Math.round(d0.max_c)
+  const loT = Math.round(d0.min_c)
+  const quotaNote = meta.quota
+    ? hi
+      ? '\n\n_नोट: Gemini free quota खत्म — यह जवाब Open-Meteo live data + rules से है (पूरी तरह free, permanent)._'
+      : '\n\n_Note: Gemini free quota exhausted — this answer uses live Open-Meteo + rules (fully free, always on)._'
+    : ''
 
-  let focus
-  if (/rain|baarish|बारिश|precip/.test(q)) {
-    focus = hi
-      ? `बारिश फोकस: आज संभावना ~${d0.pop_pct ?? '—'}% (~${d0.rain_mm ?? 0} मिमी).`
-      : `Rain focus: today chance ~${d0.pop_pct ?? '—'}% (~${d0.rain_mm ?? 0} mm).`
-  } else if (/irrigat|sinchai|सिंचाई|farm|कृषि/.test(q)) {
-    const pop = d0.pop_pct ?? 0
-    focus = hi
-      ? pop >= 55
-        ? `कृषि: बारिश संभावना अधिक (${pop}%) — सिंचाई टालने पर विचार।`
-        : `कृषि: बारिश संभावना ${pop}% — हल्की सिंचाई सुबह बेहतर हो सकती है।`
-      : pop >= 55
-        ? `Farm: rain chance high (${pop}%) — consider delaying irrigation.`
-        : `Farm: rain chance ${pop}% — light morning irrigation may be ok.`
+  let action
+  if (/rain|baarish|बारिश|precip|umbrella/.test(q)) {
+    action = hi
+      ? pop >= 60
+        ? `आज बारिश की संभावना ~**${pop}%** (~${rain} मिमी) है — छतरी रखें, खुले काम कम करें।`
+        : `बारिश संभावना ~**${pop}%** — हल्की सावधानी काफी; भारी बारिश पक्की नहीं।`
+      : pop >= 60
+        ? `Rain chance ~**${pop}%** (~${rain} mm) — carry an umbrella and limit exposed outdoor work.`
+        : `Rain chance ~**${pop}%** — light caution is enough; heavy rain is not locked in.`
+  } else if (/irrigat|sinchai|सिंचाई|wheat|crop|farm|कृषि|फसल|gehun/.test(q)) {
+    action = hi
+      ? pop >= 55 || rain >= 5
+        ? `खेत: बारिश/नमी अधिक (POP **${pop}%**) — **सिंचाई टालें**; जलभराव से जड़ सड़न जोखिम। अनिश्चितता: अगले 24 घंटे की असली बारिश मात्रा।`
+        : `खेत: POP **${pop}%** — जरूरत हो तो **हल्की सुबह सिंचाई** ठीक; दोपहर गर्मी/नमी (${hum}%) में स्प्रे टालें।`
+      : pop >= 55 || rain >= 5
+        ? `Farm: rain/moisture elevated (POP **${pop}%**) — **delay irrigation**; waterlogging risk. Uncertainty: exact mm in next 24h.`
+        : `Farm: POP **${pop}%** — light morning irrigation OK if soil is dry; avoid spray in high humidity (${hum}%).`
+  } else if (/travel|यात्रा|school|स्कूल/.test(q)) {
+    action = hi
+      ? `यात्रा/स्कूल: ${cond}, हवा ${wind} किमी/घं — तूफान/ओला हो तो बाहर सीमित रखें; वरना सामान्य सावधानी।`
+      : `Travel/school: ${cond}, wind ${wind} km/h — limit outdoor time if storm/hail; otherwise normal caution.`
   } else {
-    focus = hi ? 'सामान्य स्थिति सारांश।' : 'General situation summary.'
+    action = hi
+      ? `अभी **${temp}°C** (महसूस ${feels}°C), ${cond}. आज **${hiT}°/${loT}°**, बारिश ~**${pop}%**. ` +
+        (pop >= 70 ? 'बाहर नमी/बारिश का ख्याल रखें।' : 'सामान्य दिन की योजना ठीक है।')
+      : `Right now **${temp}°C** (feels ${feels}°C), ${cond}. Today **${hiT}°/${loT}°**, rain ~**${pop}%**. ` +
+        (pop >= 70 ? 'Plan for wet outdoor conditions.' : 'Ordinary day planning is fine.')
   }
+
+  const tomorrow =
+    d1 && d1.max_c != null
+      ? hi
+        ? `कल संकेत: ~**${Math.round(d1.max_c)}°/${Math.round(d1.min_c)}°**, बारिश ~**${d1.pop_pct ?? '—'}%**.`
+        : `Tomorrow signal: ~**${Math.round(d1.max_c)}°/${Math.round(d1.min_c)}°**, rain ~**${d1.pop_pct ?? '—'}%**.`
+      : ''
 
   if (hi) {
     return (
-      `## ${city}\n\n` +
-      `### अभी\n**${Math.round(c.temp_c)}°C** (महसूस ${Math.round(c.feels_c)}°C), ${cond}, नमी ${Math.round(c.humidity_pct)}%, हवा ${Math.round(c.wind_kmh)} किमी/घं।\n\n` +
-      `### आज\nउच्च/न्यून **${Math.round(d0.max_c)}°/${Math.round(d0.min_c)}°**, बारिश संभावना **${d0.pop_pct ?? '—'}%**.\n\n` +
-      `### ${focus}\n\n` +
-      `### स्रोत\nOpen-Meteo (live tool). यह उत्तर **नियम-आधारित grounded** मोड में है` +
-      (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY
-        ? ' (LLM key मौजूद होने पर भी tool-first)।'
-        : ' — सर्वर पर LLM key सेट नहीं।')
+      `## ${city} — लाइव मौसम\n\n` +
+      `${action}\n\n` +
+      `**अभी:** ${temp}°C (महसूस ${feels}°C), ${cond}, नमी ${hum}%, हवा ${wind} किमी/घं.\n\n` +
+      (tomorrow ? `${tomorrow}\n\n` : '') +
+      `**स्रोत:** Open-Meteo live tools (free). Numbers are real measurements/forecast — not invented.` +
+      quotaNote
     )
   }
   return (
-    `## ${city}\n\n` +
-    `### Now\n**${Math.round(c.temp_c)}°C** (feels ${Math.round(c.feels_c)}°C), ${cond}, humidity ${Math.round(c.humidity_pct)}%, wind ${Math.round(c.wind_kmh)} km/h.\n\n` +
-    `### Today\nHigh/low **${Math.round(d0.max_c)}°/${Math.round(d0.min_c)}°**, rain chance **${d0.pop_pct ?? '—'}%**.\n\n` +
-    `### ${focus}\n\n` +
-    `### Source\nOpen-Meteo (live tool). This reply is **deterministic grounded** mode` +
-    (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY
-      ? ' (tool-first even when LLM keys exist).'
-      : ' — no LLM API key configured on server.')
+    `## ${city} — live weather\n\n` +
+    `${action}\n\n` +
+    `**Now:** ${temp}°C (feels ${feels}°C), ${cond}, humidity ${hum}%, wind ${wind} km/h.\n\n` +
+    (tomorrow ? `${tomorrow}\n\n` : '') +
+    `**Source:** Open-Meteo live tools (free forever). Numbers are real — not invented.` +
+    quotaNote
   )
 }
 
-async function callGemini(model, system, user, apiKey) {
+async function callGemini(model, system, user, apiKey, timeoutMs = 12000) {
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent` +
     `?key=${encodeURIComponent(apiKey)}`
+  // Gemini 2.5/3 Flash: thinking tokens COUNT against maxOutputTokens.
+  // Without thinkingBudget:0, answers truncate mid-sentence (~50-100 chars).
   const body = {
     contents: [{ role: 'user', parts: [{ text: system + '\n\n' + user }] }],
-    generationConfig: { temperature: 0.25, maxOutputTokens: 900 },
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 2048,
+      // Disable thinking so the full budget is real answer text
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   }
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  const j = await r.json()
-  if (!r.ok) {
-    const msg = j.error?.message || 'Gemini HTTP ' + r.status
-    const err = new Error(msg)
-    err.status = r.status
-    err.raw = j
-    throw err
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), timeoutMs)
+  try {
+    let r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ac.signal,
+    })
+    let j = await r.json().catch(() => ({}))
+    // Older models may reject thinkingConfig — retry without it + higher tokens
+    if (
+      !r.ok &&
+      /thinking|Unknown name|Invalid JSON|thinkingConfig|thinking_budget/i.test(
+        String(j.error?.message || ''),
+      )
+    ) {
+      const body2 = {
+        contents: body.contents,
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+      }
+      r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body2),
+        signal: ac.signal,
+      })
+      j = await r.json().catch(() => ({}))
+    }
+    if (!r.ok) {
+      const msg = j.error?.message || 'Gemini HTTP ' + r.status
+      const err = new Error(msg)
+      err.status = r.status
+      err.raw = j
+      throw err
+    }
+    const cand = j.candidates?.[0] || {}
+    // Prefer non-thought parts only
+    const parts = cand.content?.parts || []
+    const text = parts
+      .filter((part) => part && part.text && !part.thought)
+      .map((part) => part.text)
+      .join('')
+    const finish = String(cand.finishReason || '')
+    if (!text.trim()) {
+      throw new Error(
+        'Gemini empty response' +
+          (finish ? ' finish=' + finish : '') +
+          (j.usageMetadata?.thoughtsTokenCount
+            ? ' thoughts=' + j.usageMetadata.thoughtsTokenCount
+            : ''),
+      )
+    }
+    // Hard fail truncated mid-answer so caller can try next model / rules
+    if (finish === 'MAX_TOKENS' && text.trim().length < 120) {
+      const err = new Error(
+        'Gemini truncated (MAX_TOKENS, only ' + text.trim().length + ' chars) — raise tokens or disable thinking',
+      )
+      err.partial = text
+      err.finishReason = finish
+      throw err
+    }
+    return text
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || /aborted/i.test(String(e.message || '')))) {
+      throw new Error('Gemini timeout after ' + timeoutMs + 'ms (' + model + ')')
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
   }
-  const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || ''
-  if (!text.trim()) throw new Error('Gemini empty response')
-  return text
 }
 
-async function llmPhrase(wx, message, lang, extra = {}) {
-  // Default: current Google Flash (gemini-2.0-flash was retired)
-  const preferred = process.env.GEMINI_MODEL || 'gemini-3.6-flash'
-  const geminiFallbacks = [
-    preferred,
-    'gemini-3.6-flash',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash-001',
-    'gemini-flash-latest',
-    'gemini-1.5-flash',
-  ]
-  // unique preserve order
-  const geminiModels = [...new Set(geminiFallbacks.filter(Boolean))]
 
-  const system =
-    'You are WeatherGPT, a careful bilingual (EN/HI) weather assistant for India. ' +
-    'You MUST only use facts from the provided JSON tool result (Open-Meteo live pack). ' +
-    'Never invent temperatures, rain %, alerts, AQI, or sources. ' +
-    'If a field is missing, say it is unavailable. ' +
-    'Do not claim to be a private foundation model. ' +
-    'Keep answers scannable: short markdown with ## title, ### Now, ### Today/Outlook, ### What you should do, ### Source. ' +
-    'In the Source section write exactly: Google Gemini + Open-Meteo (tool-grounded). ' +
-    'Numbers must match the tool JSON. ' +
-    (extra.crop
-      ? 'User asked about crop "' +
-        extra.crop +
-        '". Give crop×weather guidance only from weather JSON + general agronomy; no fake yield/disease diagnosis. Title must be Crop Intelligence, not a city named after the crop. '
-      : '') +
-    (lang === 'hi' ? 'Answer in Hindi (Devanagari).' : 'Answer in clear English.')
+/** Slim tool pack for Gemini — fewer tokens in, fuller answer out */
+function compactWeather(wx) {
+  if (!wx || typeof wx !== 'object') return wx
+  const daily = Array.isArray(wx.daily) ? wx.daily.slice(0, 5) : wx.daily
+  return {
+    place: wx.place,
+    lat: wx.lat,
+    lon: wx.lon,
+    current: wx.current,
+    daily,
+    source: wx.source || 'Open-Meteo',
+  }
+}
 
-  const user =
-    `User question: ${message}\n\n` +
-    (extra.crop ? `Crop context: ${extra.crop}\n\n` : '') +
-    `Place for this weather pack: ${wx.place || 'unknown'}\n\n` +
-    `Tool weather JSON (authoritative):\n${JSON.stringify(wx).slice(0, 12000)}`
 
-  // Prefer Google Gemini when key is present — try models until one works
-  if (process.env.GEMINI_API_KEY) {
-    const errors = []
+/** True if question needs live weather / place / crop×weather tools */
+function isWeatherRelated(message, extra = {}) {
+  if (extra.crop) return true
+  const t = String(message || '').toLowerCase().trim()
+  if (!t) return false
+
+  // Farm / irrigation — use PREFIX (not \birrigat\b) so "irrigation" matches
+  if (
+    /irrigat|sinchai|सिंचाई|crop|crops|wheat|gehun|rice|paddy|farm|farmer|kheti|kisaan|harvest|sowing|\bsow\b|spray|pesticide|fertilizer|field work|\bfield\b|agri|agriculture|monsoon|drought|flood/.test(
+      t,
+    )
+  )
+    return true
+
+  // Core weather
+  if (
+    /\b(weather|forecast|temperature|\btemp\b|humidity|wind|rainfall|precip|precipitation|thunder|storm|hail|cyclone|heatwave|cold\s*wave|aqi|air\s*quality|\buv\b|visibility|dew\s*point|feels\s*like|barometer|pressure|drizzle|rainy|cloudy|sunny|overcast)\b/i.test(
+      t,
+    )
+  )
+    return true
+  if (
+    /\b(rain|raining|baarish|mausam|tapman|garmi|sardi|andhi|toofan)\b/i.test(t)
+  )
+    return true
+  if (
+    /\b(umbrella|travel\s*risk|school\s*(holiday|close|open)|outdoor|picnic|flight\s*weather|metar|taf)\b/i.test(
+      t,
+    )
+  )
+    return true
+  if (/मौसम|बारिश|तापमान|गर्मी|सर्दी|आँधी|तूफान|फसल|सिंचाई|खेत|किसान|कृषि/u.test(message))
+    return true
+
+  // Place + condition
+  if (
+    /\b(in|at|for|near|around)\s+[a-z\u0900-\u097f]{2,}/i.test(t) &&
+    /\b(hot|cold|humid|wet|dry|sunny|cloudy|rain|storm|weather|mausam)\b/i.test(t)
+  )
+    return true
+
+  // Explicit non-weather trivia
+  if (
+    /\b(capital\s+of|who\s+is|who\s+was|what\s+is\s+\d|define|meaning\s+of|translate|history\s+of|president|prime\s+minister|population\s+of\s+earth|distance\s+between)\b/i.test(
+      t,
+    )
+  )
+    return false
+
+  // Pure WH- trivia without weather/farm tokens → general
+  if (
+    /^\s*(what|who|when|where|why|how|define|explain|tell\s+me)\b/i.test(t) &&
+    !/weather|rain|temp|mausam|crop|farm|forecast|aqi|wind|humid|irrigat|baarish|fasal|kheti/.test(t)
+  ) {
+    return false
+  }
+
+  return false
+}
+
+
+/** Intent Router — weather/crop vs general */
+function routeIntent(message, extra = {}) {
+  const weather = isWeatherRelated(message, extra)
+  return {
+    intent: weather ? 'weather_crop' : 'general',
+    weather,
+    crop: extra.crop || null,
+  }
+}
+
+/**
+ * Response Validator
+ * - Reject empty / mid-cut stubs
+ * - Weather path: soft-check that live numbers appear when tools exist
+ * - Never invent numbers here — only accept/reject model text
+ */
+function validateResponse(text, { route, wx, message } = {}) {
+  const t = String(text || '').trim()
+  if (!t) return { ok: false, reason: 'empty' }
+  if (t.length < 24) return { ok: false, reason: 'too_short' }
+  // Mid-word cut heuristics (e.g. "Feels like 32")
+  if (/\b(feels like|feels|humidity|wind|temperature|temp)\s*$/i.test(t)) {
+    return { ok: false, reason: 'truncated_mid_phrase' }
+  }
+  if (/[.:,;]\s*$/.test(t) && t.length < 80 && !/\n/.test(t)) {
+    // very short ending with colon often truncated template
+    if (/:\s*$/.test(t)) return { ok: false, reason: 'truncated_colon' }
+  }
+  if (route === 'weather_crop' && wx?.current) {
+    const temp = wx.current.temp_c
+    const hasDigit = /\d/.test(t)
+    // If model ignored tools entirely (no digits) on a weather Q — reject so rules can answer with real numbers
+    const q = String(message || '').toLowerCase()
+    const wantsNumbers = /temp|weather|rain|irrigat|°|celsius|baarish|mausam|forecast|crop|wheat|humidity|wind/.test(q)
+    if (wantsNumbers && !hasDigit && Number.isFinite(temp)) {
+      return { ok: false, reason: 'missing_grounded_numbers' }
+    }
+  }
+  return { ok: true, text: t }
+}
+
+/**
+ * AI Provider Manager
+ * Order: Groq → OpenRouter → Gemini → OpenAI (OpenAI is inside compat list after openrouter)
+ * Returns { text, provider, mode, label } or throws
+ */
+async function aiProviderManager(system, user, modeTag) {
+  const errors = []
+  let sawQuota = false
+
+  // 1–2–4: Groq, OpenRouter, OpenAI (compat layer already ordered groq→openrouter→openai)
+  try {
+    const r = await callCompatLlms(system, user, modeTag)
+    if (r?.text) {
+      const v = validateResponse(r.text, {})
+      if (v.ok) return { ...r, text: v.text }
+      errors.push((r.provider || 'compat') + ': rejected ' + v.reason)
+    }
+  } catch (e) {
+    errors.push(String(e.message || e).slice(0, 140))
+    if (e.quota) sawQuota = true
+  }
+
+  // 3: Gemini multi-key
+  const geminiModels = getGeminiModels()
+  const keys = getGeminiKeys()
+  for (const apiKey of keys) {
     for (const model of geminiModels) {
       try {
-        const text = await callGemini(model, system, user, process.env.GEMINI_API_KEY)
-        return { text, provider: model, mode: 'llm_grounded' }
+        const text = await callGemini(model, system, user, apiKey, 12000)
+        const v = validateResponse(text, {})
+        if (!v.ok) {
+          errors.push('gemini/' + model + ': rejected ' + v.reason)
+          continue
+        }
+        return {
+          text: v.text,
+          provider: model,
+          mode: modeTag,
+          label: 'Google Gemini',
+        }
       } catch (e) {
-        errors.push(model + ': ' + (e.message || e))
+        const msg = String(e.message || e)
+        errors.push('gemini/' + model + ': ' + msg.slice(0, 100))
+        if (isQuotaError(msg)) {
+          sawQuota = true
+          break
+        }
+        if (
+          /API key not valid|API_KEY_INVALID|PERMISSION_DENIED/i.test(msg) &&
+          !/timeout|no longer available|not found/i.test(msg)
+        ) {
+          break
+        }
+        const suggested = msg.match(/models\/(gemini-[a-z0-9.-]+)/i)
+        if (suggested && suggested[1] && !geminiModels.includes(suggested[1])) {
+          geminiModels.push(suggested[1])
+        }
         continue
       }
     }
-    throw new Error(errors.slice(0, 3).join(' | ') || 'All Gemini models failed')
   }
 
-  if (process.env.OPENAI_API_KEY) {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + process.env.OPENAI_API_KEY,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        temperature: 0.2,
-        max_tokens: 800,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-      }),
-    })
-    const j = await r.json()
-    if (!r.ok) throw new Error(j.error?.message || 'OpenAI HTTP ' + r.status)
-    const text = j.choices?.[0]?.message?.content || ''
-    if (!text.trim()) throw new Error('OpenAI empty')
-    return { text, provider: process.env.OPENAI_MODEL || 'gpt-4o-mini', mode: 'llm_grounded' }
-  }
-
-  return null
+  const err = new Error(
+    (sawQuota ? 'QUOTA: ' : '') + (errors.slice(0, 8).join(' | ') || 'AI Provider Manager: all providers failed'),
+  )
+  err.quota = sawQuota
+  err.pipeline = 'ai_provider_manager'
+  throw err
 }
+
+async function llmGeneral(message, lang) {
+  const system =
+    'You are WeatherGPT\'s general assistant (ChatGPT-style). ' +
+    'NON-weather question — answer helpfully in natural complete sentences. ' +
+    'Do NOT invent live weather numbers or force a weather report. ' +
+    'No rigid NOW/TODAY templates. ' +
+    'End with: Source: AI (general knowledge). ' +
+    (lang === 'hi' ? 'Reply in natural Hindi (Devanagari).' : 'Reply in clear natural English.')
+
+  const user = `User question:\n${message}\n\nAnswer directly.`
+  const r = await aiProviderManager(system, user, 'llm_general')
+  let text = r.text
+  if (r.label) {
+    text = text.replace(/Source:\s*AI \(general knowledge\)/i, 'Source: ' + r.label + ' (general knowledge)')
+  }
+  return { text, provider: r.provider, mode: 'llm_general', label: r.label }
+}
+
+async function llmPhrase(wx, message, lang, extra = {}) {
+  const system =
+    'You are WeatherGPT — weather + farm assistant for India (ChatGPT-style tone). ' +
+    'Speak naturally in complete sentences. Be clear, warm, practical. ' +
+    'GROUNDING (never break):\n' +
+    '1) ONLY use facts from the Open-Meteo tool JSON for numbers.\n' +
+    '2) Never invent temps, rain %, alerts, AQI, yields, or disease certainty.\n' +
+    '3) If a field is missing, say unavailable.\n' +
+    'STYLE:\n' +
+    '- Answer the USER QUESTION first, then useful context.\n' +
+    '- If user asks N sentences / yes-no / ignore templates — FOLLOW exactly.\n' +
+    '- Light markdown OK; complete answer never mid-sentence.\n' +
+    '- Include real tool numbers when relevant.\n' +
+    '- End with: Source: AI + Open-Meteo (tool-grounded).\n' +
+    (extra.crop
+      ? 'Crop context: "' + extra.crop + '". Weather×agronomy only; no fake yield %.\n'
+      : '') +
+    (lang === 'hi' ? 'Reply in natural Hindi.' : 'Reply in clear English (Hinglish OK if user used it).')
+
+  const user =
+    `User question:\n${message}\n\n` +
+    (extra.crop ? `Crop hint: ${extra.crop}\n\n` : '') +
+    `Place: ${wx.place || 'unknown'}\n\n` +
+    `Live tool weather JSON (authoritative):\n${JSON.stringify(compactWeather(wx)).slice(0, 3500)}\n\n` +
+    `Respond using only this weather data.`
+
+  const r = await aiProviderManager(system, user, 'llm_grounded')
+  let text = r.text
+  const brand = r.label || 'AI'
+  text = text
+    .replace(/Source:\s*AI \+ Open-Meteo/i, 'Source: ' + brand + ' + Open-Meteo')
+    .replace(/Source:\s*Google Gemini \+ Open-Meteo/i, 'Source: ' + brand + ' + Open-Meteo')
+
+  const v = validateResponse(text, { route: 'weather_crop', wx, message })
+  if (!v.ok) {
+    const err = new Error('Response Validator rejected: ' + v.reason)
+    err.partial = text
+    throw err
+  }
+  return { text: v.text, provider: r.provider, mode: 'llm_grounded', label: r.label }
+}
+
 
 async function readBody(req) {
   if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
@@ -402,7 +881,7 @@ async function readBody(req) {
     const chunks = []
     for await (const chunk of req) chunks.push(chunk)
     const raw = Buffer.concat(chunks.map((c) => (Buffer.isBuffer(c) ? c : Buffer.from(c)))).toString(
-      'utf8'
+      'utf8',
     )
     if (!raw) return {}
     return JSON.parse(raw)
@@ -415,22 +894,33 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end()
 
   if (req.method === 'GET') {
-    const hasGemini = !!process.env.GEMINI_API_KEY
+    const geminiKey = getGeminiKey()
+    const hasGemini = geminiKey.length >= 20
     const hasOpenAI = !!process.env.OPENAI_API_KEY
     return res.status(200).json({
       ok: true,
       service: 'WeatherGPT hybrid chat',
-      preferred_llm: 'google_gemini',
-      gemini_model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
-      default_mode: hasGemini ? 'llm_grounded_gemini' : hasOpenAI ? 'llm_grounded_openai' : 'deterministic_grounded',
-      llm_configured: hasGemini || hasOpenAI,
+      preferred_llm: getOpenAiCompatProviders()[0]?.id || (getGeminiKeys().length ? 'google_gemini' : 'rules'),
+      gemini_model: (process.env.GEMINI_MODEL || 'gemini-3.6-flash').replace(/["']/g, '').trim(),
+      gemini_key_present: getGeminiKeys().length > 0,
+      gemini_key_count: getGeminiKeys().length,
+      gemini_key_length: geminiKey ? geminiKey.length : 0,
+      free_tier_mode: (process.env.GEMINI_FREE_TIER || '1') !== '0',
+      default_mode: getOpenAiCompatProviders().length || hasGemini || hasOpenAI ? 'llm_multi_provider' : 'deterministic_grounded',
+      llm_configured: hasGemini || hasOpenAI || getOpenAiCompatProviders().length > 0,
       llm_providers: {
+        groq: !!sanitizeKey(process.env.GROQ_API_KEY || ''),
+        openrouter: !!sanitizeKey(process.env.OPENROUTER_API_KEY || ''),
         gemini: hasGemini,
         openai: hasOpenAI,
       },
+      llm_order: 'groq → openrouter → gemini → openai → rules+weather',
       contract:
-        'POST JSON { message, lat, lon, name?, lang?, crop? }. Tools (Open-Meteo) always first. Gemini phrases tool JSON only when GEMINI_API_KEY set.',
+        'POST JSON { message, lat?, lon?, name?, lang?, crop? }. Router: weather → Open-Meteo + AI; else → general AI. Providers: Groq, OpenRouter, Gemini, OpenAI.',
       honesty: '/HONESTY.txt',
+      gemini_timeout_ms_per_model: 12000,
+      gemini_max_model_attempts: 2,
+      note: 'Pipeline: Intent Router → (weather? Open-Meteo+Engine : skip) → AI Manager Groq→OpenRouter→Gemini→OpenAI → Validator → else Rules+weather.',
     })
   }
 
@@ -445,16 +935,87 @@ export default async function handler(req, res) {
     let lon = parseFloat(body.lon)
     let name = String(body.name || 'Area').slice(0, 48)
     const lang = body.lang === 'hi' ? 'hi' : 'en'
+    const cropHint = body.crop ? String(body.crop).slice(0, 48) : null
 
     if (!message) return res.status(400).json({ ok: false, error: 'message required' })
 
-    // Crop-only messages must never re-ground tools onto a geocoded "Wheat" place.
-    // Client handles Crop Intelligence; server keeps body lat/lon/name (current city).
+    // ══════════════════════════════════════════
+    // USER → Intent Router
+    // ══════════════════════════════════════════
+    const routed = routeIntent(message, { crop: cropHint })
+    const pipeline = {
+      intent: routed.intent,
+      steps: ['intent_router'],
+      providers_tried: [],
+      fallback: false,
+    }
+
+    // ── General question → AI Provider Manager only ──
+    if (routed.intent === 'general') {
+      pipeline.steps.push('ai_provider_manager')
+      let mode = 'deterministic_general'
+      let provider = 'rules'
+      let text
+      let llmError = null
+      try {
+        const llm = await llmGeneral(message, lang)
+        if (llm?.text) {
+          const v = validateResponse(llm.text, { route: 'general', message })
+          pipeline.steps.push('response_validator')
+          if (v.ok) {
+            text = v.text
+            mode = llm.mode
+            provider = llm.provider
+          } else {
+            llmError = 'validator:' + v.reason
+          }
+        }
+      } catch (e) {
+        llmError = e.message
+      }
+      if (!text) {
+        pipeline.steps.push('rules_fallback')
+        pipeline.fallback = true
+        text =
+          lang === 'hi'
+            ? '## सामान्य प्रश्न\n\nYeh mausam se juda sawal nahi lagta. AI providers (Groq / OpenRouter / Gemini) abhi jawab nahi de paaye.\n\nMausam, baarish, fasal ya city forecast poochho — Open-Meteo + AI se live jawab milega.\n\n' +
+              (llmError ? `_(${String(llmError).slice(0, 120)})_\n` : '')
+            : '## General question\n\nThat does not look weather-related. AI providers (Groq → OpenRouter → Gemini → OpenAI) could not answer right now' +
+              (llmError ? ` (${String(llmError).slice(0, 100)})` : '') +
+              '.\n\nAsk weather / rain / crops / city forecast for live Open-Meteo + AI.\n\nTip: set free GROQ_API_KEY or OPENROUTER_API_KEY on Vercel.'
+        mode = 'deterministic_general'
+        provider = 'rules'
+      }
+      return res.status(200).json({
+        ok: true,
+        mode,
+        provider,
+        answer: text,
+        route: 'general',
+        pipeline,
+        place: Number.isFinite(lat) && Number.isFinite(lon) ? { name, lat, lon, overridden: false } : null,
+        tools: { weather: null },
+        citations: [
+          {
+            name: mode === 'llm_general' ? String(provider).split(':')[0] : 'Rules',
+            role: 'General knowledge (not live weather)',
+          },
+        ],
+        llmError: llmError || undefined,
+        honesty:
+          mode === 'llm_general'
+            ? 'General AI answer — not tool-grounded weather'
+            : 'General fallback — add GROQ_API_KEY / OPENROUTER_API_KEY / GEMINI_API_KEY',
+        fetchedAt: Date.now(),
+      })
+    }
+
+    // ══════════════════════════════════════════
+    // Weather / Crop → Open-Meteo → Engine → AI → Validator
+    // ══════════════════════════════════════════
+    pipeline.steps.push('open_meteo')
     const cropOnlyMsg = isCropName(message) || isCropName(String(message).trim().split(/\s+/)[0])
 
-    // If user named another city in the message, re-ground tools there
-    // (fixes "travel risk in Noida" while client still sends home=Kanpur).
-    // Never geocode crop names (wheat/rice/…) — Crop Intelligence is client-side.
     let placeOverride = null
     try {
       if (!cropOnlyMsg) {
@@ -481,20 +1042,22 @@ export default async function handler(req, res) {
     }
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      return res.status(400).json({ ok: false, error: 'lat lon required for grounding' })
+      return res.status(400).json({ ok: false, error: 'lat lon required for weather grounding' })
     }
 
+    // Crop/Weather Engine = live tool pack
+    pipeline.steps.push('crop_weather_engine')
     const wx = await toolWeather(lat, lon, name)
     let mode = 'deterministic_grounded'
     let provider = 'rules+tools'
     let text
     let llmError = null
 
-    const cropHint = body.crop ? String(body.crop).slice(0, 48) : null
-
+    pipeline.steps.push('ai_provider_manager')
     try {
       const llm = await llmPhrase(wx, message, lang, { crop: cropHint })
       if (llm?.text) {
+        pipeline.steps.push('response_validator')
         text = llm.text
         mode = llm.mode
         provider = llm.provider
@@ -503,19 +1066,25 @@ export default async function handler(req, res) {
       llmError = e.message
     }
 
+    // If EVERYTHING fails → Rules + Weather Data
     if (!text) {
-      text = deterministicAnswer(wx, message, lang)
+      pipeline.steps.push('rules_weather_fallback')
+      pipeline.fallback = true
+      const quota = isQuotaError(llmError) || /QUOTA:/i.test(String(llmError || ''))
+      text = deterministicAnswer(wx, message, lang, { quota })
+      // validate rules output always has numbers
+      const v = validateResponse(text, { route: 'weather_crop', wx, message })
+      if (v.ok) text = v.text
       mode = 'deterministic_grounded'
-      provider = 'rules+tools'
+      provider = quota ? 'rules+tools (ai quota)' : 'rules+tools'
     }
 
-    // If client somehow hit API with bare crop, do NOT present place as the crop name
     if (cropOnlyMsg && isCropName(name)) {
       name = 'Area'
       text =
         (lang === 'hi'
-          ? '## 🌾 फसल बुद्धिमत्ता\n\nफसल का नाम स्थान नहीं है। ऐप के Crop Intelligence (client) का उपयोग करें।\n\n'
-          : '## 🌾 Crop Intelligence\n\nA crop name is not a location. Use the app Crop Intelligence path.\n\n') + text
+          ? '## 🌾 फसल बुद्धिमत्ता\n\nफसल का नाम स्थान नहीं है।\n\n'
+          : '## 🌾 Crop Intelligence\n\nA crop name is not a location.\n\n') + text
     }
 
     return res.status(200).json({
@@ -523,14 +1092,21 @@ export default async function handler(req, res) {
       mode,
       provider,
       answer: text,
+      route: 'weather',
+      pipeline,
       place: { name, lat, lon, overridden: !!placeOverride },
       tools: { weather: wx },
-      citations: [{ name: 'Open-Meteo', role: 'Live forecast tool' }],
+      citations: [
+        { name: 'Open-Meteo', role: 'Live forecast tool' },
+        ...(mode === 'llm_grounded'
+          ? [{ name: String(provider).split(':')[0], role: 'LLM phrasing (grounded)' }]
+          : [{ name: 'Rules engine', role: 'Deterministic grounded brief' }]),
+      ],
       llmError: llmError || undefined,
       honesty:
         mode === 'llm_grounded'
-          ? 'LLM phrasing only; numbers from tools'
-          : 'No LLM used — deterministic grounded templates',
+          ? 'LLM phrasing only; numbers from Open-Meteo tools'
+          : 'Rules + weather data — AI providers unavailable or rejected',
       fetchedAt: Date.now(),
     })
   } catch (e) {

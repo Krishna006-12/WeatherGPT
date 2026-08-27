@@ -415,6 +415,46 @@ export default function App() {
     setChatLoading(true)
 
     try {
+      /** Timed POST to /api/chat — never hang forever on Vercel 504 */
+      const postChatApi = async (payload, ms = 22000) => {
+        const ac = new AbortController()
+        const t = setTimeout(() => ac.abort(), ms)
+        try {
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify(payload),
+            signal: ac.signal,
+          })
+          const textBody = await res.text()
+          if (textBody.trimStart().startsWith('<')) {
+            return { ok: false, error: 'HTML from /api/chat (SPA fallback — api missing)' }
+          }
+          let j
+          try {
+            j = JSON.parse(textBody)
+          } catch {
+            return { ok: false, error: 'Bad JSON from /api/chat', status: res.status }
+          }
+          // Vercel 504 body: { error: { code: "504", message: "..." } }
+          if (!res.ok) {
+            const errMsg =
+              (typeof j.error === 'string' && j.error) ||
+              j.error?.message ||
+              j.message ||
+              `HTTP ${res.status}`
+            return { ok: false, error: errMsg, status: res.status, raw: j }
+          }
+          return j
+        } catch (e) {
+          const msg =
+            e?.name === 'AbortError' ? `timeout ${ms}ms` : e?.message || String(e)
+          return { ok: false, error: msg }
+        } finally {
+          clearTimeout(t)
+        }
+      }
+
       // ── 1) CLASSIFY before any geocode / weather / recent ──
       const classified = classifyUserQuery(raw, cropContext)
       const cropRoute = isCropRoute(classified)
@@ -493,78 +533,172 @@ export default function App() {
 
       let result = null
 
-      // ── 3) CROP ROUTE: client Crop Intelligence only (never /api/chat geocode) ──
+      // ── 3) CROP ROUTE: never geocode crop as place. Prefer Gemini phrasing
+      //    grounded on CURRENT city weather + crop hint; else client Crop Intelligence.
       if (cropRoute) {
-        result = await chat(raw, {
-          weather: targetWx || weather,
-          lang,
-          fetchWeatherFor,
-          cropContext,
-          classified,
-        })
-        // Hard guarantee: type crop when classifier says crop
-        if (result && result.type !== 'crop' && classified.crop) {
-          result = await chat(classified.crop.name_en || classified.crop.id, {
+        const cropId = classified.crop?.id || classified.crop?.name_en
+        const placeForCrop = targetCity || city
+        if (placeForCrop?.lat != null && placeForCrop?.lon != null) {
+          try {
+            const j = await postChatApi({
+              message: raw,
+              lat: placeForCrop.lat,
+              lon: placeForCrop.lon,
+              name: placeForCrop.name || city?.name || 'Area',
+              lang,
+              crop: cropId || undefined,
+            })
+            if (j.ok && j.answer) {
+              const placeName = j.place?.name || placeForCrop.name
+              const isLlm =
+                j.mode === 'llm_grounded' ||
+                /gemini|groq|openrouter|openai|llama|qwen|gemma/i.test(String(j.provider || ''))
+              if (isLlm && !detectCrop(placeName || '')) {
+                result = {
+                  text: j.answer,
+                  type: 'crop',
+                  cropId: cropId || null,
+                  confidence: 0.9,
+                  cityId: placeForCrop.id || city?.id,
+                  source: `${
+                    /^groq/i.test(String(j.provider || ''))
+                      ? 'Groq'
+                      : /^openrouter/i.test(String(j.provider || ''))
+                        ? 'OpenRouter'
+                        : /gemini/i.test(String(j.provider || ''))
+                          ? 'Google Gemini'
+                          : 'AI'
+                  }+tools · ${j.provider || 'llm'} · ${placeName}`,
+                  mode: j.mode || 'llm_grounded',
+                  provider: j.provider,
+                  citations: j.citations,
+                }
+              } else if (
+                j.mode === 'deterministic_grounded' &&
+                !detectCrop(placeName || '')
+              ) {
+                result = {
+                  text: j.answer,
+                  type: 'crop',
+                  cropId: cropId || null,
+                  confidence: 0.82,
+                  cityId: placeForCrop.id || city?.id,
+                  source: j.llmError
+                    ? `Rules+tools · ${placeName} (Gemini: ${String(j.llmError).slice(0, 80)})`
+                    : `Grounded rules+tools · ${placeName}`,
+                  mode: j.mode,
+                  provider: j.provider,
+                }
+              }
+            } else if (j.error) {
+              console.warn('crop /api/chat', j.error, j.status)
+            }
+          } catch (err) {
+            console.warn('crop /api/chat failed', err)
+          }
+        }
+
+        if (!result) {
+          result = await chat(raw, {
             weather: targetWx || weather,
             lang,
             fetchWeatherFor,
             cropContext,
             classified,
           })
+          // Hard guarantee: type crop when classifier says crop
+          if (result && result.type !== 'crop' && classified.crop) {
+            result = await chat(classified.crop.name_en || classified.crop.id, {
+              weather: targetWx || weather,
+              lang,
+              fetchWeatherFor,
+              cropContext,
+              classified,
+            })
+          }
+          // Label client template so it is never confused with Gemini
+          if (result && result.type === 'crop') {
+            result.source =
+              (lang === 'hi'
+                ? 'क्लाइंट नियम + Open-Meteo (/api/chat fail ya timeout)'
+                : 'Client rules + Open-Meteo (/api/chat failed or timed out)')
+          }
         }
-        if (result?.type === 'crop' && result.cropId) {
+        if (result?.type === 'crop' && (result.cropId || cropId)) {
           setCropContext({
-            cropId: result.cropId,
+            cropId: result.cropId || cropId,
             cityId: result.cityId || targetCity?.id || city?.id,
           })
         }
         // NEVER push recent for crop routes
       } else {
-        // ── 4) NORMAL weather: prefer client brain when wx loaded; else /api/chat ──
-        const preferClientBrain = !!targetWx?.current
-
-        if (!preferClientBrain && targetCity?.lat != null && targetCity?.lon != null) {
+        // ── 4) NORMAL weather: try Gemini-backed /api/chat first (tool-grounded),
+        //    then fall back to client deterministic brain.
+        {
           try {
             // Final guard: never send crop name as place name to API
-            const apiName = detectCrop(targetCity.name || '')
+            const apiName = detectCrop(targetCity?.name || '')
               ? city?.name || 'Area'
-              : targetCity.name
-            const res = await fetch('/api/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-              body: JSON.stringify({
-                message: raw,
-                lat: targetCity.lat,
-                lon: targetCity.lon,
-                name: apiName,
-                lang,
-              }),
+              : targetCity?.name || city?.name || 'Area'
+            const j = await postChatApi({
+              message: raw,
+              lat: targetCity?.lat ?? city?.lat,
+              lon: targetCity?.lon ?? city?.lon,
+              name: apiName,
+              lang,
             })
-            const textBody = await res.text()
-            if (!textBody.trimStart().startsWith('<') && res.ok) {
-              const j = JSON.parse(textBody)
-              if (j.ok && j.answer) {
-                const placeName = j.place?.name || apiName
-                // Reject if server somehow titled a crop as place
-                if (!detectCrop(placeName || '')) {
-                  result = {
-                    text: j.answer,
-                    type: j.mode === 'llm_grounded' ? 'llm' : 'general',
-                    confidence: j.mode === 'llm_grounded' ? 0.86 : 0.9,
-                    cityId: targetCity.id,
-                    source:
-                      j.mode === 'llm_grounded'
-                        ? `LLM+tools · ${j.provider} · ${placeName}`
-                        : `Grounded rules+tools · ${placeName}`,
-                    mode: j.mode,
-                    provider: j.provider,
-                    citations: j.citations,
-                  }
+            if (j.ok && j.answer) {
+              const placeName = j.place?.name || apiName
+              const route = j.route || (j.mode === 'llm_general' ? 'general' : 'weather')
+              // General knowledge answers have no crop-as-city risk
+              if (route === 'general' || !detectCrop(placeName || '')) {
+                const prov = String(j.provider || '')
+                const brand = /^groq/i.test(prov)
+                  ? 'Groq'
+                  : /^openrouter/i.test(prov)
+                    ? 'OpenRouter'
+                    : /gemini/i.test(prov)
+                      ? 'Google Gemini'
+                      : /^openai/i.test(prov)
+                        ? 'OpenAI'
+                        : 'AI'
+                let source
+                if (j.mode === 'llm_general' || (route === 'general' && j.mode?.startsWith?.('llm'))) {
+                  source = `${brand} · general · ${prov || brand}`
+                } else if (j.mode === 'llm_grounded') {
+                  source = `${brand}+tools · ${prov} · ${placeName}`
+                } else if (j.llmError) {
+                  source = /quota|QUOTA|exceeded your current/i.test(String(j.llmError || ''))
+                    ? `Open-Meteo free · live tools (AI quota full — add GROQ_API_KEY / OPENROUTER_API_KEY)`
+                    : `Rules+tools · ${placeName || '—'} (AI: ${String(j.llmError).slice(0, 70)})`
+                } else if (route === 'general') {
+                  source = `General rules · (no AI key)`
+                } else {
+                  source = `Grounded rules+tools · ${placeName}`
+                }
+                result = {
+                  text: j.answer,
+                  type:
+                    j.mode === 'llm_general'
+                      ? 'general'
+                      : j.mode === 'llm_grounded'
+                        ? 'llm'
+                        : 'general',
+                  confidence: j.mode === 'llm_grounded' || j.mode === 'llm_general' ? 0.9 : 0.85,
+                  cityId: route === 'general' ? undefined : targetCity.id,
+                  source,
+                  mode: j.mode,
+                  provider: j.provider,
+                  route,
+                  citations: j.citations,
+                  llmError: j.llmError,
                 }
               }
+            } else if (j.error) {
+              console.warn('weather /api/chat', j.error, j.status)
             }
-          } catch {
-            /* use client brain */
+          } catch (err) {
+            console.warn('weather /api/chat failed', err)
           }
         }
 
@@ -577,6 +711,13 @@ export default function App() {
             cropContext,
             classified,
           })
+          if (result) {
+            result.source =
+              (result.source || '') +
+              (lang === 'hi'
+                ? ' · क्लाइंट fallback (/api/chat fail ya 504 — api/chat.js redeploy karo)'
+                : ' · client fallback (/api/chat failed or 504 timeout — redeploy api/chat.js)')
+          }
           if (!result.cityId && targetCity?.id) result.cityId = targetCity.id
           if (
             placeResolved &&
