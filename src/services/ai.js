@@ -26,6 +26,7 @@ import { classifyQuery, isCropRoute, isCropOnlyClassification } from './queryCla
 /** Words that are never place names (voice + typed) */
 const PLACE_STOP = new Set(
   [
+    'hi','hello','hii','hlo','hey','yo','ok','okay','thanks','bye','sup','help','test','what','why','how','yes','no',
     'rain',
     'weather',
     'alert',
@@ -506,10 +507,31 @@ function cleanPlacePhrase(raw) {
  * Pull a place name out of free text.
  * Handles: "weather of Tokyo", "in Noida", "Tokyo weather", "Japan ka mausam", bare "Dubai".
  */
+
+/** Bare chat tokens that must never be geocoded as cities */
+const CHAT_PLACE_NOISE = new Set(
+  'hi hello hii hlo hola hey yo ok okay thanks thank thx bye good morning good night gm gn sup lol yes no yeah yep nope please pls bro help test abc what why how when where who namaste theek kya kaise'.split(
+    ' ',
+  ),
+)
+
+function isChatPlaceNoise(q) {
+  const t = String(q || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[?.!,;:]+$/g, '')
+  if (!t) return true
+  if (CHAT_PLACE_NOISE.has(t)) return true
+  if (/^(ha+|hmm+|ok+|y+o+|h+i+|hlo+|he+y+|sup+)$/i.test(t)) return true
+  if (t.length <= 2) return true
+  return false
+}
+
 function guessPlacePhrase(text) {
   if (!text) return null
   const raw = String(text).trim()
   const lower = raw.toLowerCase()
+  if (isChatPlaceNoise(raw) || isChatPlaceNoise(lower.replace(/[?.!,;:]+$/g, ''))) return null
 
   // Bare crop queries ("wheat", "potato advisory") are NOT places
   if (isCropQuestion(text) && !/\b(in|at|of|near|around)\s+[a-z\u0900-\u097f]{3,}/i.test(lower)) {
@@ -586,17 +608,21 @@ function guessPlacePhrase(text) {
         !isCropToken(t) &&
         !/^\d+$/.test(t)
     )
-  if (tokens.length === 1) return tokens[0]
+  if (tokens.length === 1) {
+    if (isChatPlaceNoise(tokens[0]) || tokens[0].length <= 3) return null
+    return tokens[0]
+  }
   // Prefer last content token in short queries ("weather tokyo")
   if (tokens.length >= 2 && tokens.length <= 6) {
     const last = tokens[tokens.length - 1]
-    if (last.length >= 3 && !isCropToken(last)) return last
+    if (last.length >= 3 && !isCropToken(last) && !isChatPlaceNoise(last)) return last
   }
 
   return null
 }
 
 async function extractCity(text, fallback) {
+  if (isChatPlaceNoise(text)) return fallback
   const classified = classifyQuery(text, null)
 
   // Crop-only: NEVER geocode / resolve the raw crop string as a place
@@ -1815,6 +1841,7 @@ export function welcomeMessage(wx, lang) {
  * For "wheat in Kanpur" returns Kanpur only.
  */
 export async function resolveMentionedCity(message, fallback = null) {
+  if (isChatPlaceNoise(message)) return fallback
   const classified = classifyQuery(message, null)
 
   // crop-only / follow-up: no place entity

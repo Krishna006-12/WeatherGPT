@@ -484,8 +484,8 @@ function filterNoise(results, query) {
 export async function searchCities(query, { count = 8, indiaOnly = false } = {}) {
   const raw = (query || '').trim()
   if (raw.length < 2) return []
-
-  // Farmer crop names are not cities — empty results (no "Wheat US")
+  if (isChatNoiseQuery(raw)) return []
+// Farmer crop names are not cities — empty results (no "Wheat US")
   if (isCropOnlyQuery(raw)) return []
 
   const q = normalizePlaceQuery(raw) || raw
@@ -556,8 +556,27 @@ export async function searchCities(query, { count = 8, indiaOnly = false } = {})
 /**
  * Resolve free-text place → single best city.
  */
+
+function isChatNoiseQuery(query) {
+  const t = String(query || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[?.!,;:]+$/g, '')
+  if (!t) return true
+  const noise = new Set(
+    'hi hello hii hlo hola hey yo ok okay thanks thx bye gm gn sup lol yes no yeah help test what why how'.split(
+      ' ',
+    ),
+  )
+  if (noise.has(t)) return true
+  if (/^(hlo+|h+i+|he+y+|ok+|sup+)$/i.test(t)) return true
+  if (t.length <= 2) return true
+  return false
+}
+
 export async function resolveCity(query) {
   if (!query) return null
+  if (isChatNoiseQuery(query)) return null
   if (isCropOnlyQuery(query)) return null
   const cleaned = normalizePlaceQuery(query)
   if (!cleaned) return null

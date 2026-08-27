@@ -102,14 +102,77 @@ const MORE_PANELS = [
   { id: 'settings', en: 'Settings', hi: 'सेटिंग्स' },
 ]
 
+/** Chat noise / greetings / non-places — never Recent cities */
+const RECENT_NOISE = new Set(
+  (
+    'hi hello hii hlo hola hey yo ok okay thanks thank thx bye byee good morning good night ' +
+    'gm gn sup lol lmao haha hmm hmmm yes no yeah yep nope nah please pls bro dude sir madam ' +
+    'help test abc xyz qwerty asdf what why how when where who whom which the a an is are was ' +
+    'were am be been being do does did done will would could should may might must can ' +
+    'weather rain temp forecast mausam baarish irrigation crop wheat rice farm kheti ' +
+    'namaste namaskar shukriya dhanyavad theek thik sahi galat kya kaise kab kahan kaun'
+  )
+    .split(/\s+/)
+    .filter(Boolean),
+)
+
+function isNoisePlaceQuery(q) {
+  const t = String(q || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[?.!,;:]+$/g, '')
+  if (!t) return true
+  if (RECENT_NOISE.has(t)) return true
+  // very short freestyle typos (hlo, hii, okk)
+  if (t.length <= 3 && !/^(goa|pune|agra|noida|kochi|surat|indore|patna|ranchi|udaipur|mysore|nashik)$/i.test(t))
+    return true
+  // pure chat / emoji-ish
+  if (/^(ha+|hmm+|ok+|y+o+|h+i+|hlo+|he+y+|sup+)$/i.test(t)) return true
+  return false
+}
+
+/**
+ * Recent cities: ONLY real geographic places.
+ * Reject crops, greetings, tiny village fuzzy matches from chat noise.
+ */
 function isBogusCropCity(c) {
   if (!c) return true
-  const name = String(c.name || '')
+  const name = String(c.name || '').trim()
   const id = String(c.id || '')
-  // Wheat US / Potato Point AU style junk from geocode
+  if (!name) return true
   if (detectCrop(name) || detectCrop(id) || isCropQuestion(name)) return true
   const first = name.split(/\s+/)[0]
   if (detectCrop(first) && (c.population || 0) < 80000) return true
+  if (isNoisePlaceQuery(name) || isNoisePlaceQuery(id)) return true
+  return false
+}
+
+/** True = safe to show in Recent / Suggested cities rail */
+function isValidRecentCity(c, { explicitPlace = false } = {}) {
+  if (!c || c.lat == null || c.lon == null) return false
+  if (isBogusCropCity(c)) return false
+  const name = String(c.name || '').trim()
+  if (name.length < 2) return false
+  if (isNoisePlaceQuery(name)) return false
+
+  const pop = Number(c.population) || 0
+  const cc = String(c.countryCode || c.countryShort || '').toUpperCase()
+  // Curated / registered app cities always OK
+  if (c.id && getCity(c.id) && getCity(c.id).name) {
+    const g = getCity(c.id)
+    if (g && !isBogusCropCity(g)) return true
+  }
+  // Explicit user place (Tokyo weather, in Pune) — allow decent geocode hits
+  if (explicitPlace) {
+    // Still block tiny obscure matches under 5k unless country capital-ish
+    if (pop > 0 && pop < 5000) return false
+    return true
+  }
+  // Auto-from-chat: require real town (pop) or known IN metro list feel
+  if (pop >= 25000) return true
+  if (pop >= 8000 && cc === 'IN') return true
+  // No population data: only if name looks like multi-word place or long unique name
+  if (pop === 0 && name.split(/\s+/).length >= 2 && name.length >= 6) return true
   return false
 }
 
@@ -121,7 +184,7 @@ function loadRecent() {
     if (!Array.isArray(arr)) return []
     const cleaned = arr
       .map((c) => registerCity(c))
-      .filter((c) => c && !isBogusCropCity(c))
+      .filter((c) => c && isValidRecentCity(c, { explicitPlace: true }))
     // Persist scrub so Wheat/Potato don't reappear after reload
     if (cleaned.length !== arr.length) {
       try {
@@ -138,7 +201,7 @@ function loadRecent() {
 
 function saveRecent(list) {
   try {
-    const clean = (list || []).filter((c) => c && !isBogusCropCity(c)).slice(0, 12)
+    const clean = (list || []).filter((c) => c && isValidRecentCity(c, { explicitPlace: true })).slice(0, 12)
     localStorage.setItem('weathergpt_recent_cities', JSON.stringify(clean))
   } catch {
     /* ignore */
@@ -211,12 +274,15 @@ export default function App() {
     savePrefs(next)
   }, [])
 
-  const pushRecent = useCallback((c) => {
-    if (!c?.id) return
-    if (isBogusCropCity(c)) return
+  const pushRecent = useCallback((c, opts = {}) => {
+    if (!c?.id && !(c?.lat != null && c?.lon != null)) return
+    if (!isValidRecentCity(c, opts)) return
     registerCity(c)
     setRecentCities((prev) => {
-      const next = [c, ...prev.filter((x) => x.id !== c.id && !isBogusCropCity(x))].slice(0, 12)
+      const next = [
+        c,
+        ...prev.filter((x) => x.id !== c.id && isValidRecentCity(x, { explicitPlace: true })),
+      ].slice(0, 12)
       saveRecent(next)
       return next
     })
@@ -501,11 +567,19 @@ export default function App() {
       } else {
         // Normal weather / place flow — existing behaviour
         try {
+          // Greetings / chat noise must NEVER geocode into Recent (e.g. "hlo" → Hlotse)
+          if (isNoisePlaceQuery(raw)) {
+            /* stay on current city */
+          } else {
           const mentioned = await resolveMentionedCity(raw, null)
           if (mentioned?.lat != null && mentioned?.lon != null) {
-            // Guard: never accept a "place" that is actually a crop
-            if (detectCrop(mentioned.name || '') || isCropQuestion(mentioned.name || '')) {
-              /* ignore bogus crop-as-city */
+            // Guard: never accept a "place" that is actually a crop / noise geocode
+            if (
+              detectCrop(mentioned.name || '') ||
+              isCropQuestion(mentioned.name || '') ||
+              !isValidRecentCity(mentioned, { explicitPlace: true })
+            ) {
+              /* ignore bogus crop-as-city or fuzzy junk */
             } else {
               const sameHome = mentioned.id && city?.id && mentioned.id === city.id
               const sameCoords =
@@ -526,6 +600,7 @@ export default function App() {
               }
             }
           }
+          } // end non-noise place resolve
         } catch (err) {
           console.warn('place resolve failed', err)
         }
@@ -744,10 +819,10 @@ export default function App() {
           result.source = `${result.source} · ${targetCity.name}`
         }
 
-        // ── 5) Recent locations: ONLY validated geographic cities (never crops) ──
+        // ── 5) Recent: ONLY when user named a real city/country (never chat noise)
         if (
-          result.cityId &&
-          result.cityId !== cityId &&
+          placeResolved &&
+          targetCity &&
           result.type !== 'crop' &&
           !result.cropId &&
           !cropRoute
@@ -755,11 +830,10 @@ export default function App() {
           const other = getCity(result.cityId) || targetCity
           if (
             other &&
-            !detectCrop(other.name || '') &&
-            !isCropQuestion(other.name || '') &&
-            !isBogusCropCity(other)
+            other.id !== city?.id &&
+            isValidRecentCity(other, { explicitPlace: true })
           ) {
-            pushRecent(other)
+            pushRecent(other, { explicitPlace: true })
           }
         }
       }
@@ -996,7 +1070,7 @@ export default function App() {
         <div className="app-main-col flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {/* Mobile home chrome */}
           {isHome && (
-            <header className="lg:hidden shrink-0 mobile-home-chrome px-3.5 pt-3 pb-2">
+            <header className="mobile-only-chrome mobile-home-chrome px-3.5 pt-3 pb-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-9 h-9 rounded-[14px] glass-sky flex items-center justify-center shadow-sm shadow-black/20">
@@ -1051,7 +1125,7 @@ export default function App() {
 
           {/* Mobile non-home header */}
           {!isHome && (
-            <header className="lg:hidden shrink-0 bg-gradient-to-b from-navy-900 to-navy-800 text-white px-4 pt-3 pb-3">
+            <header className="mobile-only-chrome bg-gradient-to-b from-navy-900 to-navy-800 text-white px-4 pt-3 pb-3">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
@@ -1151,7 +1225,7 @@ export default function App() {
           )}
 
           {/* Desktop top strip — unified glass chrome for all tabs */}
-          <header className="hidden lg:flex shrink-0 px-6 py-3.5 items-center justify-between gap-4 bg-white/[0.03] border-b border-white/[0.07] backdrop-blur-xl">
+          <header className="desktop-only-chrome shrink-0 px-6 py-3.5 items-center justify-between gap-4 bg-white/[0.03] border-b border-white/[0.07] backdrop-blur-xl">
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/45">
                 {isHome
