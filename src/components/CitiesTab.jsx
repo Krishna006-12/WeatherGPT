@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Globe2, Loader2, MapPin, Navigation, Search, Sparkles, X, Star } from 'lucide-react'
-import { CITY_LIST } from '../data/cities'
-import { searchCities, resolveCoords } from '../services/geocode'
-import { tr } from '../data/i18n'
-import { SeverityDot } from './Icons'
+import { CITY_LIST } from '../data/cities.js'
+import { searchCities, resolveCoords } from '../services/geocode.js'
+import { tr } from '../data/i18n.js'
+import { SeverityDot } from './Icons.jsx'
 
 const ease = [0.22, 1, 0.36, 1]
 

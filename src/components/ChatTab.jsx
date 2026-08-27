@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Mic, MicOff, Send, Sparkles, ShieldCheck, Volume2, VolumeX, MapPin, Radio } from 'lucide-react'
-import MarkdownText from './MarkdownText'
-import { SeverityDot } from './Icons'
-import { tr } from '../data/i18n'
-import { speakText, stopSpeaking, ttsSupported, isSpeaking } from '../services/voice'
+import MarkdownText from './MarkdownText.jsx'
+import { SeverityDot } from './Icons.jsx'
+import { tr } from '../data/i18n.js'
+import { speakText, stopSpeaking, ttsSupported, isSpeaking } from '../services/voice.js'
 
 export default function ChatTab({
   lang,

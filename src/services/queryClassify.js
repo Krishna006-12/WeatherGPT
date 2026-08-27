@@ -17,7 +17,7 @@ import {
   isCropQuestion,
   isCropFollowUp,
   getCropById,
-} from '../data/crops'
+} from '../data/crops.js'
 
 const PLACE_PREP =
   /\b(?:in|at|near|around|of|for|from)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.'-]{1,48})/i

@@ -3,7 +3,7 @@
  * Grounded on live weather pack + insights (no fabricated data)
  */
 
-import { buildPrediction, buildTravelInsight, buildSchoolInsight, estimateVisibility } from './insights'
+import { buildPrediction, buildTravelInsight, buildSchoolInsight, estimateVisibility } from './insights.js'
 
 /**
  * Structured AI brief for the product home — What / Expect / Do

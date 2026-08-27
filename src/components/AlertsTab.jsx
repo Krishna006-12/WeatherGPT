@@ -13,7 +13,7 @@ import {
   Share2,
   Zap,
 } from 'lucide-react'
-import { tr } from '../data/i18n'
+import { tr } from '../data/i18n.js'
 import {
   alertIvrScript,
   alertSmsBody,
@@ -21,7 +21,7 @@ import {
   shareOrCopy,
   smsLink,
   whatsappShareLink,
-} from '../services/outreach'
+} from '../services/outreach.js'
 
 function severityMeta(sev) {
   if (sev === 'red') return { label: 'SEVERE', cls: 'sev-severe', bar: 'bg-alert-red' }

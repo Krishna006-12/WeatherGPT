@@ -1,5 +1,5 @@
 import { Droplets, Leaf, Sprout, CloudRain, Wind } from 'lucide-react'
-import { tr } from '../data/i18n'
+import { tr } from '../data/i18n.js'
 import { motion } from 'framer-motion'
 
 export default function FarmTab({ lang, weather }) {

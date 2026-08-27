@@ -18,16 +18,16 @@ import {
   Sun,
   Wind,
 } from 'lucide-react'
-import { WeatherIcon, SeverityDot } from './Icons'
-import WeatherCharacter from './WeatherCharacter'
+import { WeatherIcon, SeverityDot } from './Icons.jsx'
+import WeatherCharacter from './WeatherCharacter.jsx'
 import {
   buildTravelInsight,
   buildSchoolInsight,
   estimateVisibility,
-} from '../services/insights'
-import { buildStructuredBrief, buildDailyBriefing, shareBriefing } from '../services/briefing'
-import { toDisplayTemp, tempUnitLabel } from '../services/storage'
-import { CITIES, getCity } from '../data/cities'
+} from '../services/insights.js'
+import { buildStructuredBrief, buildDailyBriefing, shareBriefing } from '../services/briefing.js'
+import { toDisplayTemp, tempUnitLabel } from '../services/storage.js'
+import { CITIES, getCity } from '../data/cities.js'
 
 const SparkTemp = lazy(() =>
   import('./DashCharts').then((m) => ({ default: m.SparkTemp })),

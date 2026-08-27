@@ -6,7 +6,7 @@
  * - Falls back to Service Worker showNotification when available
  */
 
-import { CITIES, getCity } from '../data/cities'
+import { CITIES, getCity } from '../data/cities.js'
 
 const SEEN_KEY = 'wgpt_alert_seen_v1'
 const WATCH_KEY = 'wgpt_alert_watch_v1'
