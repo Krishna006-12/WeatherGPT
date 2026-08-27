@@ -6,7 +6,7 @@
 export const CROP_CATALOG = {
   wheat: {
     id: 'wheat',
-    names: ['wheat', 'gehun', 'gehu', 'गेहूँ', 'गेहूं', 'गेंहू'],
+    names: ['wheat', 'wheaat', 'wheet', 'gehun', 'gehu', 'गेहूँ', 'गेहूं', 'गेंहू'],
     name_en: 'Wheat',
     name_hi: 'गेहूँ',
     season_en: 'Rabi · sow ~Oct–Dec, harvest ~Mar–Apr (N. India)',

@@ -131,8 +131,8 @@ async function callOpenAiCompat(provider, model, system, user, timeoutMs = 20000
       },
       body: JSON.stringify({
         model,
-        temperature: 0.35,
-        max_tokens: 900,
+        temperature: 0.45,
+        max_tokens: 1100,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
@@ -635,65 +635,76 @@ function compactWeather(wx) {
 /** True if question needs live weather / place / crop×weather tools */
 function isWeatherRelated(message, extra = {}) {
   if (extra.crop) return true
-  const t = String(message || '').toLowerCase().trim()
+  const raw = String(message || '')
+  const t = raw.toLowerCase().trim()
   if (!t) return false
 
-  // Farm / irrigation — use PREFIX (not \birrigat\b) so "irrigation" matches
+  // Common crop typos / hinglish farm terms (substring OK)
   if (
-    /irrigat|sinchai|सिंचाई|crop|crops|wheat|gehun|rice|paddy|farm|farmer|kheti|kisaan|harvest|sowing|\bsow\b|spray|pesticide|fertilizer|field work|\bfield\b|agri|agriculture|monsoon|drought|flood/.test(
+    /irrigat|sinchai|sinchayi|सिंचाई|wheaat|wheat|gehun|gehu|paddy|dhan|chawal|makka|maize|ganna|sugarcane|kapas|cotton|aloo|potato|pyaz|onion|sarson|mustard|fasal|crop|crops|farm|farmer|kheti|kisaan|kisan|harvest|buwai|sowing|\bsow\b|spray|pesticide|fertilizer|urvarak|khad|monsoon|drought|flood|sukha|baadh/.test(
       t,
     )
   )
     return true
 
-  // Core weather
+  // Weather core
   if (
-    /\b(weather|forecast|temperature|\btemp\b|humidity|wind|rainfall|precip|precipitation|thunder|storm|hail|cyclone|heatwave|cold\s*wave|aqi|air\s*quality|\buv\b|visibility|dew\s*point|feels\s*like|barometer|pressure|drizzle|rainy|cloudy|sunny|overcast)\b/i.test(
+    /weather|forecast|temperature|\btemp\b|humidity|wind|rainfall|precip|thunder|storm|hail|cyclone|heatwave|aqi|drizzle|rainy|cloudy|sunny|overcast|baarish|mausam|tapman|garmi|sardi|andhi|toofan|umbrella|mausam/.test(
       t,
     )
   )
     return true
-  if (
-    /\b(rain|raining|baarish|mausam|tapman|garmi|sardi|andhi|toofan)\b/i.test(t)
-  )
-    return true
-  if (
-    /\b(umbrella|travel\s*risk|school\s*(holiday|close|open)|outdoor|picnic|flight\s*weather|metar|taf)\b/i.test(
-      t,
-    )
-  )
-    return true
-  if (/मौसम|बारिश|तापमान|गर्मी|सर्दी|आँधी|तूफान|फसल|सिंचाई|खेत|किसान|कृषि/u.test(message))
+
+  if (/मौसम|बारिश|तापमान|गर्मी|सर्दी|आँधी|तूफान|फसल|सिंचाई|खेत|किसान|कृषि|गेहूँ|गेहूं/.test(raw))
     return true
 
-  // Place + condition
   if (
-    /\b(in|at|for|near|around)\s+[a-z\u0900-\u097f]{2,}/i.test(t) &&
-    /\b(hot|cold|humid|wet|dry|sunny|cloudy|rain|storm|weather|mausam)\b/i.test(t)
+    /\b(travel\s*risk|school\s*(holiday|close|open)|outdoor|picnic|flight\s*weather|metar|taf)\b/i.test(t)
   )
     return true
 
-  // Explicit non-weather trivia
+  // Explicit trivia → general
   if (
-    /\b(capital\s+of|who\s+is|who\s+was|what\s+is\s+\d|define|meaning\s+of|translate|history\s+of|president|prime\s+minister|population\s+of\s+earth|distance\s+between)\b/i.test(
+    /\b(capital\s+of|who\s+is|who\s+was|what\s+is\s+\d|define|meaning\s+of|translate|history\s+of|president|prime\s+minister)\b/i.test(
       t,
     )
   )
     return false
 
-  // Pure WH- trivia without weather/farm tokens → general
   if (
     /^\s*(what|who|when|where|why|how|define|explain|tell\s+me)\b/i.test(t) &&
-    !/weather|rain|temp|mausam|crop|farm|forecast|aqi|wind|humid|irrigat|baarish|fasal|kheti/.test(t)
-  ) {
+    !/weather|rain|temp|mausam|crop|farm|forecast|aqi|wind|humid|irrigat|baarish|fasal|kheti|wheat|pune|delhi|kanpur/.test(
+      t,
+    )
+  )
     return false
-  }
 
   return false
 }
 
 
 /** Intent Router — weather/crop vs general */
+
+/** Map common typos / hinglish crop words → id for prompts */
+function normalizeCropHint(message, bodyCrop) {
+  if (bodyCrop) return String(bodyCrop).toLowerCase().slice(0, 48)
+  const t = String(message || '').toLowerCase()
+  const map = [
+    [/wheaat|wheat|gehun|gehu|गेहूँ|गेहूं/, 'wheat'],
+    [/paddy|\brice\b|dhan|chawal|चावल/, 'rice'],
+    [/makka|maize|\bcorn\b/, 'maize'],
+    [/ganna|sugarcane/, 'sugarcane'],
+    [/kapas|cotton/, 'cotton'],
+    [/aloo|potato/, 'potato'],
+    [/pyaz|onion/, 'onion'],
+    [/sarson|mustard/, 'mustard'],
+  ]
+  for (const [re, id] of map) {
+    if (re.test(t)) return id
+  }
+  return null
+}
+
 function routeIntent(message, extra = {}) {
   const weather = isWeatherRelated(message, extra)
   return {
@@ -805,15 +816,20 @@ async function aiProviderManager(system, user, modeTag) {
 }
 
 async function llmGeneral(message, lang) {
+  const hinglish = /\b(me|mein|mai|ke|ki|ka|hai|kya|nahi|nahin|kaise|kab|kitna)\b/i.test(message) || /[\u0900-\u097F]/.test(message)
   const system =
-    'You are WeatherGPT\'s general assistant (ChatGPT-style). ' +
-    'NON-weather question — answer helpfully in natural complete sentences. ' +
-    'Do NOT invent live weather numbers or force a weather report. ' +
-    'No rigid NOW/TODAY templates. ' +
-    'End with: Source: AI (general knowledge). ' +
-    (lang === 'hi' ? 'Reply in natural Hindi (Devanagari).' : 'Reply in clear natural English.')
+    'You are WeatherGPT, a friendly expert assistant (same quality bar as ChatGPT). ' +
+    'The user asked a NON-live-weather question. ' +
+    'Write like a smart human: clear, specific, structured, complete sentences — not a brochure or Wikipedia dump. ' +
+    'Open with a one-line direct answer. Then 2-4 short paragraphs or tight bullets. ' +
+    'If the topic is farming in general (no live city weather pack), give practical India-focused advice and say live city weather was not attached. ' +
+    'Never invent live temperatures or rain %. ' +
+    'End with exactly one line: Source: AI (general knowledge). ' +
+    (hinglish || lang === 'hi'
+      ? 'Reply in natural Hinglish or Hindi — simple words, like talking to a farmer/student. Avoid heavy pure-Sanskrit style.'
+      : 'Reply in clear natural English.')
 
-  const user = `User question:\n${message}\n\nAnswer directly.`
+  const user = `User message:\n${message}\n\nGive a high-quality helpful answer now.`
   const r = await aiProviderManager(system, user, 'llm_general')
   let text = r.text
   if (r.label) {
@@ -823,37 +839,60 @@ async function llmGeneral(message, lang) {
 }
 
 async function llmPhrase(wx, message, lang, extra = {}) {
+  const hinglish =
+    /\b(me|mein|mai|ke|ki|ka|hai|kya|nahi|nahin|kaise|kab|kitna|wheaat|gehun|sinchai)\b/i.test(
+      message,
+    ) || /[\u0900-\u097F]/.test(message)
+  const crop = extra.crop || null
+  const c = wx?.current || {}
+  const d0 = (wx?.daily && wx.daily[0]) || {}
+  const snap =
+    `LIVE NOW in ${wx?.place || 'area'}: ` +
+    `${c.temp_c != null ? Math.round(c.temp_c) + '°C' : 'temp n/a'} ` +
+    `(feels ${c.feels_c != null ? Math.round(c.feels_c) + '°C' : 'n/a'}), ` +
+    `humidity ${c.humidity_pct != null ? Math.round(c.humidity_pct) + '%' : 'n/a'}, ` +
+    `wind ${c.wind_kmh != null ? Math.round(c.wind_kmh) + ' km/h' : 'n/a'}, ` +
+    `code ${c.weather_code ?? 'n/a'}, precip ${c.precip_mm ?? 0} mm. ` +
+    `Today: high/low ${d0.max_c != null ? Math.round(d0.max_c) + '°/' + Math.round(d0.min_c) + '°' : 'n/a'}, ` +
+    `rain chance ${d0.pop_pct ?? '—'}%, rain ${d0.rain_mm ?? 0} mm.`
+
   const system =
-    'You are WeatherGPT — weather + farm assistant for India (ChatGPT-style tone). ' +
-    'Speak naturally in complete sentences. Be clear, warm, practical. ' +
-    'GROUNDING (never break):\n' +
-    '1) ONLY use facts from the Open-Meteo tool JSON for numbers.\n' +
-    '2) Never invent temps, rain %, alerts, AQI, yields, or disease certainty.\n' +
-    '3) If a field is missing, say unavailable.\n' +
-    'STYLE:\n' +
-    '- Answer the USER QUESTION first, then useful context.\n' +
-    '- If user asks N sentences / yes-no / ignore templates — FOLLOW exactly.\n' +
-    '- Light markdown OK; complete answer never mid-sentence.\n' +
-    '- Include real tool numbers when relevant.\n' +
-    '- End with: Source: AI + Open-Meteo (tool-grounded).\n' +
-    (extra.crop
-      ? 'Crop context: "' + extra.crop + '". Weather×agronomy only; no fake yield %.\n'
+    'You are WeatherGPT — a sharp weather + farm copilot for India. Quality bar = ChatGPT: natural, specific, useful. ' +
+    'NEVER sound like a generic textbook or government pamphlet. ' +
+    'GROUNDING RULES (hard):\n' +
+    '1) Every temperature, humidity, wind, rain mm, and rain-% MUST come from the LIVE snapshot / tool JSON.\n' +
+    '2) Do not invent numbers. If missing, say unavailable.\n' +
+    '3) Do not claim definite yield loss/gain or disease diagnosis.\n' +
+    'ANSWER SHAPE (always):\n' +
+    '• First sentence = direct answer to the user (e.g. irrigation: YES / NO / WAIT — with reason tied to LIVE rain/heat).\n' +
+    '• Then 2 short sections max: (1) What the weather is doing now (with numbers) (2) What you should do in next 24-48h.\n' +
+    '• One line uncertainty (e.g. exact mm may vary locally).\n' +
+    '• Optional one-line tip. No long history of CRI stages unless user asked "how irrigation works".\n' +
+    '• If user asked about a city, talk about THAT city only.\n' +
+    '• Keep total under ~160 words unless user asked for detail.\n' +
+    '• End with: Source: AI + Open-Meteo (live tools).\n' +
+    (crop
+      ? 'Crop focus: ' +
+        crop +
+        '. Tie advice to live weather + light agronomy. Prefer action over theory.\n'
       : '') +
-    (lang === 'hi' ? 'Reply in natural Hindi.' : 'Reply in clear English (Hinglish OK if user used it).')
+    (hinglish || lang === 'hi'
+      ? 'Language: natural Hinglish (simple Roman Hindi + English), friendly — jaise kisi smart dost/advisor se baat ho.'
+      : 'Language: clear natural English.')
 
   const user =
-    `User question:\n${message}\n\n` +
-    (extra.crop ? `Crop hint: ${extra.crop}\n\n` : '') +
-    `Place: ${wx.place || 'unknown'}\n\n` +
-    `Live tool weather JSON (authoritative):\n${JSON.stringify(compactWeather(wx)).slice(0, 3500)}\n\n` +
-    `Respond using only this weather data.`
+    `User asked:\n${message}\n\n` +
+    (crop ? `Crop: ${crop}\n` : '') +
+    `${snap}\n\n` +
+    `Full tool JSON:\n${JSON.stringify(compactWeather(wx)).slice(0, 3000)}\n\n` +
+    `Write the ChatGPT-quality grounded answer now. Lead with the decision/action.`
 
   const r = await aiProviderManager(system, user, 'llm_grounded')
   let text = r.text
   const brand = r.label || 'AI'
   text = text
-    .replace(/Source:\s*AI \+ Open-Meteo/i, 'Source: ' + brand + ' + Open-Meteo')
-    .replace(/Source:\s*Google Gemini \+ Open-Meteo/i, 'Source: ' + brand + ' + Open-Meteo')
+    .replace(/Source:\s*AI \+ Open-Meteo[^\n]*/i, 'Source: ' + brand + ' + Open-Meteo (live tools)')
+    .replace(/Source:\s*Google Gemini \+ Open-Meteo[^\n]*/i, 'Source: ' + brand + ' + Open-Meteo (live tools)')
 
   const v = validateResponse(text, { route: 'weather_crop', wx, message })
   if (!v.ok) {
@@ -935,7 +974,7 @@ export default async function handler(req, res) {
     let lon = parseFloat(body.lon)
     let name = String(body.name || 'Area').slice(0, 48)
     const lang = body.lang === 'hi' ? 'hi' : 'en'
-    const cropHint = body.crop ? String(body.crop).slice(0, 48) : null
+    const cropHint = normalizeCropHint(message, body.crop)
 
     if (!message) return res.status(400).json({ ok: false, error: 'message required' })
 

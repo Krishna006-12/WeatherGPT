@@ -1503,5 +1503,4 @@ function Section({ title, children }) {
       <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-white/75">{children}</div>
     </div>
   )
-  
 }
