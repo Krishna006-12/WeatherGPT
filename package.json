@@ -11,7 +11,9 @@
     "deploy": "vercel --prod",
     "deploy:preview": "vercel",
     "api": "node scripts/local-api-server.mjs",
-    "dev:full": "node scripts/local-api-server.mjs & vite"
+    "dev:full": "node scripts/local-api-server.mjs & vite",
+    "ship": "npm run build && vercel --prod",
+    "git:status": "git status -sb"
   },
   "dependencies": {
     "framer-motion": "^13.1.1",

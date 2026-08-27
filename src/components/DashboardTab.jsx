@@ -850,11 +850,13 @@ export default function DashboardTab({
       <div className="flex items-start gap-3">
         <SeverityDot severity={topAlert.severity} className="mt-1.5 scale-125" />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2 mb-1">
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${alertMeta.cls}`}>
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span
+              className={`inline-flex items-center text-[10px] font-bold tracking-wide px-2.5 py-1 rounded-full shrink-0 ${alertMeta.cls}`}
+            >
               {alertMeta.label}
             </span>
-            <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wide">
+            <span className="inline-flex items-center text-[10px] font-semibold text-white/45 uppercase tracking-wider shrink-0">
               {topAlert.source || 'MODEL'}
             </span>
           </div>
@@ -938,22 +940,30 @@ export default function DashboardTab({
   const aqiBlock =
     aqi?.aqi != null ? (
       <section className="dash-glass p-4">
-        <div className="flex items-center gap-3">
-          <div className="aqi-ring w-14 h-14 rounded-full p-[3px] shrink-0" style={{ ['--p']: aqiPct }}>
-            <div className="w-full h-full rounded-full bg-navy-900/90 flex flex-col items-center justify-center border border-white/10">
-              <span className="text-[14px] font-bold text-white leading-none">{aqi.aqi}</span>
-              <span className="text-[8px] text-white/40 font-semibold">AQI</span>
+        <div className="flex items-center gap-3.5">
+          <div
+            className="aqi-ring w-14 h-14 rounded-full p-[3px] shrink-0"
+            style={{ ['--p']: aqiPct }}
+            aria-label={`AQI ${aqi.aqi}`}
+          >
+            <div className="w-full h-full rounded-full bg-[#0B1F3A]/95 flex flex-col items-center justify-center border border-white/12">
+              <span className="text-[15px] font-bold text-white leading-none tabular-nums">
+                {aqi.aqi}
+              </span>
+              <span className="text-[8px] text-white/45 font-semibold tracking-wide mt-0.5">AQI</span>
             </div>
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-wider text-white/40">
               {lang === 'hi' ? 'वायु गुणवत्ता' : 'Air quality'}
             </p>
-            <p className="text-[14px] font-semibold text-white">
-              {lang === 'hi' ? aqi.band.hi : aqi.band.en}
-              <span className="text-[11px] font-medium text-white/40 ml-1.5">{aqi.scale}</span>
+            <p className="text-[14px] font-semibold text-white leading-snug">
+              <span>{lang === 'hi' ? aqi.band.hi : aqi.band.en}</span>
+              {aqi.scale ? (
+                <span className="text-[11px] font-medium text-white/40 ml-2">{aqi.scale}</span>
+              ) : null}
             </p>
-            <p className="text-[12px] text-white/50 mt-0.5">{aqi.advice(lang)}</p>
+            <p className="text-[12px] text-white/50 mt-1 leading-snug">{aqi.advice(lang)}</p>
           </div>
         </div>
       </section>

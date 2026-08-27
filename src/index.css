@@ -1844,3 +1844,134 @@ body {
     animation: none !important;
   }
 }
+
+
+/* ========== Premium polish v2 (layout + badges + glass) ========== */
+.mesh-bg {
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
+/* Desktop: fill viewport — no huge empty navy void */
+@media (min-width: 1024px) {
+  .app-shell {
+    height: 100% !important;
+    min-height: calc(100dvh - 0px);
+    max-width: min(1520px, 100%) !important;
+  }
+  .app-main-col {
+    flex: 1 1 auto !important;
+    width: 100%;
+    min-height: 0;
+  }
+  .desktop-grid {
+    width: 100%;
+  }
+  /* Hero + stacks use full column width */
+  .stack-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* Severity chips — never glue to next label */
+.sev-severe,
+.sev-high,
+.sev-moderate,
+.sev-low {
+  display: inline-flex !important;
+  align-items: center;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.sev-severe {
+  background: rgba(255, 69, 58, 0.22) !important;
+  color: #ff8a80 !important;
+  border: 1px solid rgba(255, 69, 58, 0.45);
+  box-shadow: 0 0 0 1px rgba(255, 69, 58, 0.12);
+}
+.sev-high {
+  background: rgba(255, 159, 10, 0.18) !important;
+  color: #ffb340 !important;
+  border: 1px solid rgba(255, 159, 10, 0.4);
+}
+.sev-moderate {
+  background: rgba(255, 214, 10, 0.14) !important;
+  color: #ffe566 !important;
+  border: 1px solid rgba(255, 214, 10, 0.28);
+}
+.sev-low {
+  background: rgba(52, 199, 89, 0.14) !important;
+  color: #5fd98a !important;
+  border: 1px solid rgba(52, 199, 89, 0.3);
+}
+
+/* Richer matte glass cards */
+.dash-glass {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(18, 36, 64, 0.55) 42%,
+    rgba(10, 22, 42, 0.72) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 12px 40px rgba(0, 8, 24, 0.28) !important;
+  border-radius: 22px !important;
+}
+.dash-glass:hover {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 16px 48px rgba(0, 8, 24, 0.34) !important;
+}
+
+/* AQI ring cleaner */
+.aqi-ring {
+  background: conic-gradient(
+    #34c759 0deg,
+    #34c759 calc(var(--p, 0.3) * 0.45 * 360deg),
+    #ffd60a calc(var(--p, 0.3) * 0.7 * 360deg),
+    #ff9f0a calc(var(--p, 0.3) * 0.9 * 360deg),
+    #ff453a calc(var(--p, 0.3) * 360deg),
+    rgba(255, 255, 255, 0.1) calc(var(--p, 0.3) * 360deg),
+    rgba(255, 255, 255, 0.1) 360deg
+  );
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* Page breathing room */
+.page-pad {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+@media (min-width: 1024px) {
+  .page-pad {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+    padding-top: 0.75rem;
+  }
+}
+
+/* Hero premium depth */
+.dash-hero {
+  border-radius: 24px !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 20px 50px rgba(0, 8, 24, 0.35) !important;
+  overflow: hidden;
+}
+
+/* Sidebar icons — crisper active state */
+@media (min-width: 1024px) {
+  .app-sidebar {
+    background: linear-gradient(180deg, rgba(14, 36, 68, 0.92), rgba(8, 22, 44, 0.88)) !important;
+  }
+}
+
