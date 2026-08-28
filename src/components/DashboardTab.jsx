@@ -1,5 +1,4 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import {
   Car,
   ChevronDown,
@@ -19,7 +18,6 @@ import {
   Wind,
 } from 'lucide-react'
 import { WeatherIcon, SeverityDot } from './Icons'
-import WeatherCharacter from './WeatherCharacter'
 import {
   buildTravelInsight,
   buildSchoolInsight,
@@ -28,6 +26,8 @@ import {
 import { buildStructuredBrief, buildDailyBriefing, shareBriefing } from '../services/briefing'
 import { toDisplayTemp, tempUnitLabel } from '../services/storage'
 import { CITIES, getCity } from '../data/cities'
+
+const WeatherCharacter = lazy(() => import('./WeatherCharacter'))
 
 const SparkTemp = lazy(() =>
   import('./DashCharts').then((m) => ({ default: m.SparkTemp })),
@@ -92,8 +92,6 @@ function heroCloudMode(weather) {
   if (icon === 'sun') return 'clear'
   return 'cloudy'
 }
-
-const ease = [0.22, 1, 0.36, 1]
 
 function sevGlass(level) {
   const hi = level === 'high' || level === 'avoid' || level === 'poor' || level === 'extreme'
@@ -537,7 +535,9 @@ export default function DashboardTab({
               </span>
             </div>
           </div>
-          <WeatherCharacter weather={weather} lang={lang} />
+          <Suspense fallback={<div className="wx-character-skel" aria-hidden />}>
+            <WeatherCharacter weather={weather} lang={lang} />
+          </Suspense>
         </div>
 
         <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/10">
@@ -894,26 +894,18 @@ export default function DashboardTab({
                 {lang === 'hi' ? 'क्यों?' : 'Why?'}
                 <ChevronDown className={`w-3.5 h-3.5 transition ${open ? 'rotate-180' : ''}`} />
               </button>
-              <AnimatePresence>
-                {open && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.22, ease }}
-                    className="overflow-hidden"
-                  >
-                    <ul className="mt-2 space-y-1 border-t border-white/8 pt-2">
-                      {(d.factors || []).map((f, i) => (
-                        <li key={i} className="text-[11px] text-white/60 flex gap-1.5">
-                          <span className="text-sky-300">•</span>
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {open && (
+                <div className="overflow-hidden">
+                  <ul className="mt-2 space-y-1 border-t border-white/8 pt-2">
+                    {(d.factors || []).map((f, i) => (
+                      <li key={i} className="text-[11px] text-white/60 flex gap-1.5">
+                        <span className="text-sky-300">•</span>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )
         })}
@@ -934,29 +926,22 @@ export default function DashboardTab({
         </span>
         <ChevronDown className={`w-4 h-4 opacity-60 transition ${sourcesOpen ? 'rotate-180' : ''}`} />
       </button>
-      <AnimatePresence>
-        {sourcesOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <ul className="px-4 pb-3 space-y-1.5 text-white/70">
-              {(weather.sources || []).map((s, i) => (
-                <li key={i} className="text-[12px] leading-snug">
-                  <span className="font-semibold text-white/90">{s.name}</span>
-                  <span className="opacity-70"> — {s.role}</span>
-                </li>
-              ))}
-              <li className="text-[11px] opacity-50 pt-1">
-                {lang === 'hi' ? 'अंतिम अपडेट' : 'Last updated'}: {minsAgo}{' '}
-                {lang === 'hi' ? 'मिनट पहले' : 'min ago'}
+      {sourcesOpen && (
+        <div className="overflow-hidden">
+          <ul className="px-4 pb-3 space-y-1.5 text-white/70">
+            {(weather.sources || []).map((s, i) => (
+              <li key={i} className="text-[12px] leading-snug">
+                <span className="font-semibold text-white/90">{s.name}</span>
+                <span className="opacity-70"> — {s.role}</span>
               </li>
-            </ul>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            ))}
+            <li className="text-[11px] opacity-50 pt-1">
+              {lang === 'hi' ? 'अंतिम अपडेट' : 'Last updated'}: {minsAgo}{' '}
+              {lang === 'hi' ? 'मिनट पहले' : 'min ago'}
+            </li>
+          </ul>
+        </div>
+      )}
     </section>
   )
 

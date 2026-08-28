@@ -22,6 +22,20 @@ import {
   getCropById,
 } from '../data/crops'
 import { classifyQuery, isCropRoute, isCropOnlyClassification } from './queryClassify'
+import {
+  buildLockedWeatherFacts,
+  factsToLlmToolJson,
+  cropSeasonCheck,
+  diseaseRiskNotes,
+  chemicalWindowAdvice,
+  irrigationFlags,
+  bestCropsNow,
+  compareCities,
+  formatSourceFooter,
+  rainIntensityFromMm,
+  wmoInfoHonest,
+} from './ruleEngine'
+
 
 /** Words that are never place names (voice + typed) */
 const PLACE_STOP = new Set(
@@ -820,10 +834,12 @@ function rainAnswer(wx, lang) {
           {
             heading: 'आज vs कल',
             body:
-              `• **आज:** ~${t.pop}% बारिश संभावना · ~${t.rain} मिमी · ${t.condition_hi}\n` +
-              `• **कल:** ~${tmr.pop}% बारिश संभावना · ~${tmr.rain} मिमी · ${tmr.condition_hi}\n` +
-              `• **5-दिन कुल वर्षा:** ~${wx.agri.forecastRain} मिमी\n` +
-              `• नोट: % दिन-प्रतिनिधि है (केवल एक घंटे का max नहीं)`,
+              `• **आज — संभावना:** ~${t.pop}% (दिन-प्रतिनिधि; कच्चा peak अलग हो सकता है)\n` +
+              `• **आज — मात्रा:** ~${t.rain} मिमी · **तीव्रता:** ${(t.intensity && (t.intensity.hi || t.intensity.en)) || rainIntensityFromMm(t.rain).hi}\n` +
+              `• **आज — स्थिति:** ${t.condition_hi}${wmoInfoHonest(t.code).hailPossible ? ' · ओले संभव (मॉडल, गारंटी नहीं)' : ''}\n` +
+              `• **कल:** संभावना ~${tmr.pop}% · मात्रा ~${tmr.rain} मिमी · ${tmr.condition_hi}\n` +
+              `• **5-दिन कुल मात्रा:** ~${wx.agri.forecastRain} मिमी\n` +
+              `• संभावना, मिमी और तीव्रता अलग-अलग फ़ील्ड हैं — एक दूसरे से न मिलाएँ`,
           },
           {
             heading: 'घंटेवार संकेत',
@@ -858,10 +874,12 @@ function rainAnswer(wx, lang) {
         {
           heading: 'Today vs tomorrow',
           body:
-            `• **Today:** ~${t.pop}% chance of rain · ~${t.rain} mm · ${t.condition}\n` +
-            `• **Tomorrow:** ~${tmr.pop}% chance of rain · ~${tmr.rain} mm · ${tmr.condition}\n` +
-            `• **5-day total rainfall:** ~${wx.agri.forecastRain} mm\n` +
-            `• Note: % is day-representative (not a single hourly spike)`,
+            `• **Today — probability:** ~${t.pop}% (day-representative; raw peak may differ)\n` +
+            `• **Today — amount:** ~${t.rain} mm · **intensity:** ${(t.intensity && (t.intensity.en || t.intensity.id)) || rainIntensityFromMm(t.rain).en}\n` +
+            `• **Today — condition:** ${t.condition}${wmoInfoHonest(t.code).hailPossible ? ' · hail possible (model class, not guaranteed)' : ''}\n` +
+            `• **Tomorrow:** probability ~${tmr.pop}% · amount ~${tmr.rain} mm · ${tmr.condition}\n` +
+            `• **5-day total amount:** ~${wx.agri.forecastRain} mm\n` +
+            `• Probability, mm, and intensity are separate fields — do not conflate`,
         },
         {
           heading: 'Hourly signal',
@@ -1041,6 +1059,16 @@ function cropAnswer(wx, lang, crop, userText = '') {
   const name = lang === 'hi' ? crop.name_hi : crop.name_en
   const season = lang === 'hi' ? crop.season_hi : crop.season_en
   const lower = String(userText || '').toLowerCase()
+  const facts = wx?.facts || (hasWx ? buildLockedWeatherFacts(wx) : null)
+  const seasonCheck = cropSeasonCheck(crop.id, {
+    tz: wx?.timezone || wx?.city?.tz || 'Asia/Kolkata',
+    at: wx?.fetchedAt || Date.now(),
+  })
+  const diseaseNotes = hasWx ? diseaseRiskNotes(crop.id, facts, lang) : []
+  const chem = hasWx ? chemicalWindowAdvice(facts, lang) : null
+  const irrig = hasWx
+    ? irrigationFlags(facts, { cropStage: null, soilKnown: false })
+    : null
 
   let focusKey = 'general'
   if (/spray|छिड़काव|fungicide|pesticide|blight|दवा/.test(lower)) focusKey = 'spray'
@@ -1071,26 +1099,17 @@ function cropAnswer(wx, lang, crop, userText = '') {
   else if (rainRisk === 'elevated') weatherImpact = 'watch'
 
   let irrigateLine
-  if (!hasWx) {
+  if (!hasWx || !irrig) {
     irrigateLine =
       lang === 'hi'
         ? 'स्थानीय मौसम उपलब्ध नहीं — सामान्य फसल ज्ञान ही।'
         : 'Local weather unavailable — general crop notes only.'
-  } else if (pop >= 55 || rain >= 8) {
-    irrigateLine =
-      lang === 'hi'
-        ? 'बारिश संकेत (~' + pop + '% / ' + rain + ' मिमी) — सिंचाई टालने पर विचार।'
-        : 'Rain signal (~' + pop + '% / ' + rain + ' mm) — consider holding irrigation.'
-  } else if (pop < 25 && rain < 1 && temp != null && temp >= 33) {
-    irrigateLine =
-      lang === 'hi'
-        ? 'सूखा + गर्मी संकेत — फसल तनाव दिखे तो हल्की सिंचाई।'
-        : 'Dry + heat signal — light irrigation only if crop shows stress.'
   } else {
     irrigateLine =
-      lang === 'hi'
-        ? 'मध्यम संकेत — खेत/मिट्टी देखकर निर्णय (सेंसर डेटा नहीं)।'
-        : 'Moderate signal — decide from field/soil (no on-farm sensors here).'
+      (lang === 'hi' ? irrig.reason_hi : irrig.reason_en) +
+      ' (' +
+      (lang === 'hi' ? irrig.disclaimer_hi : irrig.disclaimer_en) +
+      ')'
   }
 
   const tip =
@@ -1173,8 +1192,30 @@ function cropAnswer(wx, lang, crop, userText = '') {
           { heading: 'जोखिम / नोट', body: riskLine },
           { heading: 'आउटलुक', body: outlook },
           {
+            heading: 'फसल कैलेंडर',
+            body:
+              (seasonCheck.mismatch ? '⚠️ **सीजन मिसमैच:** ' : '✓ ') +
+              seasonCheck.message_hi +
+              '\n• कैटलॉग: ' +
+              season,
+          },
+          diseaseNotes.length
+            ? {
+                heading: 'रोग जोखिम (केवल संकेत)',
+                body: diseaseNotes.map((n) => '• ' + n).join('\n'),
+              }
+            : null,
+          chem
+            ? {
+                heading: 'छिड़काव / उर्वरक (सशर्त)',
+                body: '• स्प्रे: ' + chem.spray + '\n• उर्वरक: ' + chem.fertilizer,
+              }
+            : null,
+          {
             heading: 'ईमानदारी',
-            body: 'सामान्य फसल×मौसम मार्गदर्शन — उपज/रोग निदान/मिट्टी सेंसर नहीं। स्थानीय KVK से पुष्टि करें।',
+            body:
+              'सामान्य फसल×मौसम मार्गदर्शन — उपज भविष्यवाणी/रोग निदान/मिट्टी सेंसर नहीं। ' +
+              'सभी संख्याएँ लॉक्ड वेदर JSON से। स्थानीय KVK/SAU से पुष्टि करें।',
           },
         ],
         null,
@@ -1206,8 +1247,30 @@ function cropAnswer(wx, lang, crop, userText = '') {
         { heading: 'Risk / note', body: riskLine },
         { heading: 'Outlook', body: outlook },
         {
+          heading: 'Crop calendar',
+          body:
+            (seasonCheck.mismatch ? '⚠️ **Season mismatch:** ' : '✓ ') +
+            seasonCheck.message_en +
+            '\n• Catalog: ' +
+            season,
+        },
+        diseaseNotes.length
+          ? {
+              heading: 'Disease risk (signal only)',
+              body: diseaseNotes.map((n) => '• ' + n).join('\n'),
+            }
+          : null,
+        chem
+          ? {
+              heading: 'Spray / fertilizer (conditional)',
+              body: '• Spray: ' + chem.spray + '\n• Fertilizer: ' + chem.fertilizer,
+            }
+          : null,
+        {
           heading: 'Honesty',
-          body: 'General crop×weather guidance — not yield prediction, disease diagnosis, or soil-sensor advice. Confirm with local extension / KVK.',
+          body:
+            'General crop×weather guidance — not yield prediction, disease diagnosis, or soil-sensor advice. ' +
+            'All numbers from locked weather JSON. Confirm with local extension / KVK / SAU.',
         },
       ],
       null,
@@ -1640,6 +1703,112 @@ function generalAnswer(wx, lang) {
   }
 }
 
+
+function bestCropAnswer(wx, lang) {
+  const facts = wx?.facts || (wx?.current ? buildLockedWeatherFacts(wx) : null)
+  const res = bestCropsNow({
+    tz: wx?.timezone || wx?.city?.tz || 'Asia/Kolkata',
+    wxFacts: facts,
+    limit: 4,
+  })
+  const city = wx ? cityName(wx, lang) : lang === 'hi' ? 'आपका क्षेत्र' : 'your area'
+  if (lang === 'hi') {
+    const lines = (res.crops || [])
+      .map((c, i) => `${i + 1}. **${c.id}** (${c.season}, ${c.phase}) — स्कोर ${c.score}`)
+      .join('\n')
+    return {
+      ...wrapSummary(
+        `🌱 अभी उपयुक्त फसल संकेत — ${city}`,
+        [
+          {
+            heading: 'नियम इंजन शॉर्टलिस्ट',
+            body:
+              lines ||
+              'इस महीने कोई स्पष्ट बुआई-खिड़की फसल नहीं मिली — KVK से पूछें।',
+          },
+          { heading: 'माह', body: res.month_hi + ' · ' + res.note_hi },
+          {
+            heading: 'ईमानदारी',
+            body: 'मिट्टी जाँच, बाज़ार भाव, पानी उपलब्धता यहाँ नहीं। Gemini/AI केवल व्याख्या कर सकता है — सूची नियमों से बनी है।',
+          },
+        ],
+        null,
+        0.78,
+      ),
+      type: 'crop',
+      cropId: res.crops?.[0]?.id || null,
+    }
+  }
+  const lines = (res.crops || [])
+    .map((c, i) => `${i + 1}. **${c.id}** (${c.season}, ${c.phase}) — score ${c.score}`)
+    .join('\n')
+  return {
+    ...wrapSummary(
+      `🌱 Better-fit crops right now — ${city}`,
+      [
+        {
+          heading: 'Rule-engine shortlist',
+          body: lines || 'No clear sowing-window crop for this month — ask local KVK.',
+        },
+        { heading: 'Month', body: res.month_en + ' · ' + res.note_en },
+        {
+          heading: 'Honesty',
+          body: 'No soil test, market price, or water-availability check here. List is calendar+weather rules first; LLM only explains.',
+        },
+      ],
+      null,
+      0.78,
+    ),
+    type: 'crop',
+    cropId: res.crops?.[0]?.id || null,
+  }
+}
+
+function compareCitiesAnswer(packs, lang, metric = 'temp_c') {
+  const factsList = (packs || []).map((w) => w?.facts || (w ? buildLockedWeatherFacts(w) : null))
+  const cmp = compareCities(factsList, { metric })
+  if (!cmp.ok) {
+    return {
+      ...wrapSummary(
+        lang === 'hi' ? '🏙️ शहर तुलना' : '🏙️ City comparison',
+        [
+          {
+            heading: lang === 'hi' ? 'अनुपलब्ध' : 'Unavailable',
+            body: lang === 'hi' ? cmp.message_hi : cmp.message_en,
+          },
+        ],
+        null,
+        0.7,
+      ),
+      type: 'general',
+    }
+  }
+  const lines = cmp.ranked
+    .map(
+      (r, i) =>
+        `${i + 1}. **${r.name}** — ${r.temp_c}°C · rain ${r.rain_probability_pct}% / ${r.rain_amount_mm} mm · ${r.condition}`,
+    )
+    .join('\n')
+  return {
+    ...wrapSummary(
+      lang === 'hi' ? '🏙️ शहर तुलना (पूर्ण डेटा)' : '🏙️ City comparison (complete data)',
+      [
+        {
+          heading: lang === 'hi' ? 'रैंकिंग' : 'Ranking',
+          body: lines,
+        },
+        {
+          heading: lang === 'hi' ? 'नोट' : 'Note',
+          body: lang === 'hi' ? cmp.message_hi : cmp.message_en,
+        },
+      ],
+      null,
+      0.86,
+    ),
+    type: 'general',
+  }
+}
+
 export async function chat(message, ctx) {
   const {
     weather: currentWx,
@@ -1764,7 +1933,9 @@ export async function chat(message, ctx) {
       result = generalAnswer(wx, lang)
       break
     default:
-      if (cropHit) {
+      if (/best\s+crop|which\s+crop|kya\s+fasal|कौन\s*सी\s*फसल|suitable\s+crop|fasal\s+ugae/i.test(text) && !cropHit) {
+        result = bestCropAnswer(wx, lang)
+      } else if (cropHit) {
         result = cropAnswer(wx, lang, cropHit, text)
       } else if (INTENTS.rain.test(text) && INTENTS.irrigate.test(text)) {
         result = agriAnswer(wx, lang)
@@ -1774,19 +1945,24 @@ export async function chat(message, ctx) {
   }
 
   if (!wx) {
-    result.source =
-      lang === 'hi' ? 'स्रोत: मौसम अनुपलब्ध' : 'Source: weather unavailable'
+    result.source = formatSourceFooter(null, lang)
     result.cityId = null
   } else {
-    const mins = Math.max(1, Math.round((Date.now() - (wx.fetchedAt || Date.now())) / 60000))
-    result.source = wx.live
-      ? lang === 'hi'
-        ? `स्रोत: Open-Meteo + IMD थ्रेशोल्ड · ${mins} मिनट पहले`
-        : `Source: Open-Meteo + IMD thresholds · ${mins} min ago`
-      : lang === 'hi'
-        ? `स्रोत: ऑफ़लाइन पैक (डेमो-सेफ) · IMD थ्रेशोल्ड`
-        : `Source: Offline pack (demo-safe) · IMD thresholds`
-    result.cityId = result.type === 'crop' ? wx.city?.id : wx.city?.id
+    const facts = wx.facts || buildLockedWeatherFacts(wx)
+    result.source = formatSourceFooter(facts, lang)
+    result.factsFingerprint = facts?.fingerprint || null
+    result.cityId = wx.city?.id || null
+    // Attach locked facts summary for UI debug / consistency
+    if (facts && !result.lockedFacts) {
+      result.lockedFacts = {
+        fingerprint: facts.fingerprint,
+        fetched_at_iso: facts.meta.fetched_at_iso,
+        model: facts.meta.model,
+        temp_c: facts.current.temp_c,
+        pop: facts.rain.today.probability_pct,
+        rain_mm: facts.rain.today.amount_mm,
+      }
+    }
   }
 
   result.intent = intent

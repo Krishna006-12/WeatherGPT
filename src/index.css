@@ -6,7 +6,7 @@
 
 
 @theme {
-  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'DM Sans', sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* Command-center glass — reference #0B1F3A family */
@@ -2456,13 +2456,13 @@ body {
   display: flex !important;
   flex-direction: column !important;
   height: 100% !important;
-  min-height: 340px !important;
+  min-height: 360px !important;
   padding: 1.25rem 1.35rem !important;
   color: #fff !important;
 }
 .dash-hero,
 .pg-hero {
-  min-height: 340px !important;
+  min-height: 360px !important;
 }
 .wx-character {
   z-index: 6 !important;
@@ -2571,44 +2571,51 @@ header.hidden.lg\:flex,
 }
 
 
+
 /* ═══════════════════════════════════════════════════════════
-   Samsung-style dynamic 2D weather character
+   Samsung-style COMPLETE 2D weather character (filled, full body)
    ═══════════════════════════════════════════════════════════ */
 .wx-character {
-  position: absolute;
-  right: 2%;
-  bottom: 18%;
-  width: min(42%, 200px);
-  max-width: 210px;
-  z-index: 4;
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.35));
-  animation: wx-enter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  position: relative !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: min(48%, 220px) !important;
+  max-width: 240px;
+  min-width: 120px;
+  z-index: 6 !important;
+  pointer-events: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.4));
+  animation: wx-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  flex: 0 0 auto !important;
+  align-self: flex-end !important;
+  margin-bottom: 0 !important;
 }
 .wx-character-stage {
   width: 100%;
+  aspect-ratio: 200 / 260;
   position: relative;
   line-height: 0;
+  z-index: 1;
 }
 .wx-person-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-  overflow: visible;
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  overflow: visible !important;
 }
 .wx-character-tip {
-  margin-top: 2px;
-  padding: 4px 10px;
+  margin-top: 4px;
+  padding: 5px 12px;
   border-radius: 999px;
-  background: rgba(8, 18, 36, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 10px;
+  background: rgba(8, 18, 36, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -2616,30 +2623,25 @@ header.hidden.lg\:flex,
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: center;
+  line-height: 1.2;
 }
 
-/* breathing / idle bob */
+/* Idle life */
 .wx-head {
-  transform-origin: 80px 80px;
-  animation: wx-breathe 3.2s ease-in-out infinite;
+  transform-origin: 100px 100px;
+  animation: wx-breathe 3.4s ease-in-out infinite;
 }
 .wx-torso {
-  transform-origin: 80px 120px;
-  animation: wx-sway 4.5s ease-in-out infinite;
-}
-.wx-legs {
-  transform-origin: 80px 170px;
+  transform-origin: 100px 140px;
+  animation: wx-sway 4.6s ease-in-out infinite;
 }
 .wx-umbrella {
-  transform-origin: 70px 132px;
+  transform-origin: 64px 150px;
   animation: wx-umbrella-bob 2.8s ease-in-out infinite;
 }
 .wx-person-svg.is-windy .wx-torso,
 .wx-person-svg.is-windy .wx-umbrella {
-  animation-duration: 1.6s;
-}
-.wx-person-svg.is-windy .wx-head {
-  animation: wx-breathe 2s ease-in-out infinite;
+  animation-duration: 1.5s;
 }
 .wx-shadow {
   animation: wx-shadow-pulse 3.2s ease-in-out infinite;
@@ -2656,128 +2658,62 @@ header.hidden.lg\:flex,
 .wx-phone {
   animation: wx-phone-tap 3s ease-in-out infinite;
 }
-
-/* scene FX layer */
-.wx-fx {
-  position: absolute;
-  inset: -8% -5% 5% -5%;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-}
-.wx-character-stage { z-index: 1; }
-
-.wx-drop {
-  position: absolute;
-  top: -12%;
-  width: 2px;
-  height: 14px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, transparent, rgba(200, 230, 255, 0.85));
-  animation: wx-fall linear infinite;
-}
-.wx-drop.is-bolt {
-  width: 3px;
-  height: 22px;
-  background: linear-gradient(180deg, #fff8c8, rgba(255, 220, 100, 0.2));
-  opacity: 0.7;
-  animation-name: wx-fall-bolt;
-}
-.wx-flake {
-  position: absolute;
-  top: -8%;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
-  animation: wx-snow linear infinite;
-}
-.wx-sun-disc {
-  position: absolute;
-  top: 4%;
-  right: 8%;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #fff6c8, #ffb84d 55%, #f08a20);
-  box-shadow: 0 0 24px rgba(255, 190, 80, 0.65);
+.wx-sun-core {
   animation: wx-sun-pulse 3s ease-in-out infinite;
+  transform-origin: 158px 42px;
 }
-.wx-sun-ray {
-  position: absolute;
-  top: 10%;
-  right: 14%;
-  width: 3px;
-  height: 12px;
-  border-radius: 2px;
-  background: rgba(255, 210, 100, 0.55);
-  transform-origin: center 22px;
-  animation: wx-ray-spin 8s linear infinite;
+.wx-sun-halo {
+  animation: wx-sun-pulse 3s ease-in-out infinite;
+  transform-origin: 158px 42px;
+  animation-delay: 0.15s;
 }
-.wx-sun-ray.r1 { transform: rotate(0deg) translateY(-18px); }
-.wx-sun-ray.r2 { transform: rotate(60deg) translateY(-18px); animation-delay: -1s; }
-.wx-sun-ray.r3 { transform: rotate(120deg) translateY(-18px); animation-delay: -2s; }
-
-.wx-moon {
-  position: absolute;
-  top: 6%;
-  right: 10%;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #f5f0d8, #c8c4a8);
-  box-shadow: 0 0 16px rgba(200, 210, 255, 0.4);
+.wx-moon-core {
   animation: wx-moon-glow 4s ease-in-out infinite;
 }
-.wx-moon::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  right: -4px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: transparent;
-  box-shadow: inset -6px 0 0 rgba(10, 20, 40, 0.35);
-}
 .wx-star {
-  position: absolute;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: #fff;
   animation: wx-twinkle 2.2s ease-in-out infinite;
 }
-.wx-star.s1 { top: 12%; right: 28%; animation-delay: 0s; }
-.wx-star.s2 { top: 22%; right: 8%; width: 2px; height: 2px; animation-delay: 0.7s; }
-.wx-star.s3 { top: 8%; right: 40%; width: 2px; height: 2px; animation-delay: 1.3s; }
-
-.wx-fog-band {
-  position: absolute;
-  left: -20%;
-  width: 140%;
-  height: 18px;
-  border-radius: 40px;
-  background: linear-gradient(90deg, transparent, rgba(220, 230, 240, 0.35), transparent);
-  filter: blur(4px);
-  animation: wx-fog-drift 6s ease-in-out infinite;
+.wx-svg-flash {
+  animation: wx-flash 2.8s ease-in-out infinite;
 }
-.wx-fog-band.b1 { bottom: 28%; animation-duration: 7s; }
-.wx-fog-band.b2 { bottom: 40%; opacity: 0.7; animation-duration: 9s; animation-direction: reverse; }
-
-.wx-gust {
-  position: absolute;
-  height: 2px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
-  animation: wx-gust-move 1.8s ease-in-out infinite;
+.wx-fog-e {
+  animation: wx-fog-drift 7s ease-in-out infinite;
 }
-.wx-gust.g1 { top: 30%; width: 40%; left: 10%; }
-.wx-gust.g2 { top: 48%; width: 50%; left: 5%; animation-delay: 0.4s; }
-.wx-gust.g3 { top: 62%; width: 35%; left: 20%; animation-delay: 0.8s; }
 
-/* mood palette tweaks on tip */
+/* SVG rain / snow fall inside viewBox */
+.wx-svg-drop {
+  animation: wx-svg-fall linear infinite;
+  opacity: 0.9;
+}
+.wx-svg-drop.bolt {
+  animation-name: wx-svg-fall-bolt;
+}
+.wx-svg-flake {
+  animation: wx-svg-snow linear infinite;
+}
+
+@keyframes wx-svg-fall {
+  0% { transform: translateY(0); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translateY(200px); opacity: 0; }
+}
+@keyframes wx-svg-fall-bolt {
+  0% { transform: translateY(0); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translateY(210px); opacity: 0; }
+}
+@keyframes wx-svg-snow {
+  0% { transform: translate(0, 0); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translate(14px, 200px); opacity: 0; }
+}
+@keyframes wx-flash {
+  0%, 88%, 100% { opacity: 0; }
+  90% { opacity: 1; }
+  93% { opacity: 0.2; }
+  95% { opacity: 0.9; }
+}
+
 .wx-character.mood-rain .wx-character-tip,
 .wx-character.mood-storm .wx-character-tip {
   color: #c8e4ff;
@@ -2792,75 +2728,52 @@ header.hidden.lg\:flex,
 }
 
 @keyframes wx-enter {
-  from { opacity: 0; transform: translateY(12px) scale(0.94); }
+  from { opacity: 0; transform: translateY(14px) scale(0.94); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes wx-breathe {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
+  50% { transform: translateY(-2.5px); }
 }
 @keyframes wx-sway {
-  0%, 100% { transform: rotate(-0.6deg); }
-  50% { transform: rotate(0.8deg); }
+  0%, 100% { transform: rotate(-0.7deg); }
+  50% { transform: rotate(0.9deg); }
 }
 @keyframes wx-umbrella-bob {
-  0%, 100% { transform: rotate(-2deg); }
-  50% { transform: rotate(3deg); }
+  0%, 100% { transform: rotate(-2.5deg); }
+  50% { transform: rotate(3.5deg); }
 }
 @keyframes wx-shadow-pulse {
-  0%, 100% { opacity: 0.9; transform: scaleX(1); }
-  50% { opacity: 0.7; transform: scaleX(0.94); }
+  0%, 100% { opacity: 0.95; transform: scaleX(1); }
+  50% { opacity: 0.7; transform: scaleX(0.92); }
 }
 @keyframes wx-puddle {
-  0%, 100% { opacity: 0.5; transform: scaleX(1); }
-  50% { opacity: 0.8; transform: scaleX(1.08); }
-}
-@keyframes wx-fall {
-  0% { transform: translateY(0) rotate(12deg); opacity: 0; }
-  10% { opacity: 0.9; }
-  100% { transform: translateY(120px) rotate(12deg); opacity: 0; }
-}
-@keyframes wx-fall-bolt {
-  0% { transform: translateY(0); opacity: 0; }
-  15% { opacity: 1; }
-  100% { transform: translateY(130px); opacity: 0; }
-}
-@keyframes wx-snow {
-  0% { transform: translate(0, 0); opacity: 0; }
-  15% { opacity: 1; }
-  100% { transform: translate(12px, 130px); opacity: 0; }
+  0%, 100% { opacity: 0.55; transform: scaleX(1); }
+  50% { opacity: 0.85; transform: scaleX(1.1); }
 }
 @keyframes wx-sun-pulse {
   0%, 100% { transform: scale(1); filter: brightness(1); }
-  50% { transform: scale(1.06); filter: brightness(1.12); }
-}
-@keyframes wx-ray-spin {
-  to { transform: rotate(360deg) translateY(-18px); }
+  50% { transform: scale(1.07); filter: brightness(1.12); }
 }
 @keyframes wx-moon-glow {
   0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.15); }
+  50% { filter: brightness(1.18); }
 }
 @keyframes wx-twinkle {
-  0%, 100% { opacity: 0.35; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1.2); }
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 @keyframes wx-fog-drift {
-  0%, 100% { transform: translateX(-8%); }
-  50% { transform: translateX(8%); }
-}
-@keyframes wx-gust-move {
-  0% { transform: translateX(-20%); opacity: 0; }
-  30% { opacity: 0.7; }
-  100% { transform: translateX(40%); opacity: 0; }
+  0%, 100% { transform: translateX(-6px); }
+  50% { transform: translateX(8px); }
 }
 @keyframes wx-glow {
-  0%, 100% { opacity: 0.6; r: 4; }
+  0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }
 }
 @keyframes wx-heat {
   0%, 100% { opacity: 0.3; transform: translateY(0); }
-  50% { opacity: 0.8; transform: translateY(-6px); }
+  50% { opacity: 0.85; transform: translateY(-7px); }
 }
 @keyframes wx-phone-tap {
   0%, 70%, 100% { transform: translateY(0); }
@@ -2868,17 +2781,17 @@ header.hidden.lg\:flex,
   86% { transform: translateY(-1px); }
 }
 
-/* Hero layout: temp left, character right (Samsung-like) */
+/* Hero: temp left, full character right */
 .pg-hero-main {
   display: flex !important;
   flex-direction: row !important;
   align-items: stretch !important;
   justify-content: space-between !important;
-  gap: 8px !important;
+  gap: 6px !important;
   flex: 1 1 auto !important;
-  min-height: 0 !important;
+  min-height: 200px !important;
   position: relative !important;
-  padding: 8px 0 4px !important;
+  padding: 4px 0 2px !important;
 }
 .pg-hero-temp-block {
   display: flex !important;
@@ -2891,44 +2804,39 @@ header.hidden.lg\:flex,
   z-index: 5 !important;
   padding: 4px 0 !important;
 }
-.pg-hero-temp-block .pg-hero-temp {
-  line-height: 0.92 !important;
+.pg-hero-temp-block .wx-hero-icon-fallback {
+  display: none !important;
 }
-.pg-hero .wx-character {
-  position: relative !important;
-  right: auto !important;
-  bottom: auto !important;
-  width: min(48%, 190px) !important;
-  flex: 0 0 auto !important;
-  align-self: flex-end !important;
-  margin-bottom: 4px !important;
-}
+
 @media (min-width: 640px) {
-  .pg-hero .wx-character {
-    width: min(46%, 210px) !important;
+  .wx-character {
+    width: min(46%, 240px) !important;
   }
 }
 @media (min-width: 1024px) {
-  .pg-hero .wx-character {
-    width: min(44%, 230px) !important;
+  .wx-character {
+    width: min(42%, 260px) !important;
   }
-  .wx-character-tip {
-    font-size: 11px;
-  }
+  .wx-character-tip { font-size: 12px; }
+  .pg-hero-main { min-height: 240px !important; }
 }
-
-/* Hide big static WeatherIcon when character is present — cleaner Samsung look */
-.pg-hero-temp-block .wx-hero-icon-fallback {
-  display: none;
-}
-@media (max-width: 360px) {
-  .pg-hero .wx-character {
-    width: min(42%, 140px) !important;
+@media (max-width: 380px) {
+  .wx-character {
+    width: min(46%, 150px) !important;
   }
   .wx-character-tip {
     font-size: 9px;
     padding: 3px 8px;
   }
+}
+
+.wx-character-skel {
+  width: min(48%, 180px);
+  height: 200px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+  flex: 0 0 auto;
+  align-self: flex-end;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2938,17 +2846,18 @@ header.hidden.lg\:flex,
   .wx-umbrella,
   .wx-shadow,
   .wx-puddle,
-  .wx-drop,
-  .wx-flake,
-  .wx-sun-disc,
-  .wx-sun-ray,
-  .wx-moon,
+  .wx-svg-drop,
+  .wx-svg-flake,
+  .wx-sun-core,
+  .wx-sun-halo,
+  .wx-moon-core,
   .wx-star,
-  .wx-fog-band,
-  .wx-gust,
+  .wx-fog-e,
   .wx-lantern-glow,
   .wx-heat-w,
-  .wx-phone {
+  .wx-phone,
+  .wx-svg-flash {
     animation: none !important;
   }
 }
+

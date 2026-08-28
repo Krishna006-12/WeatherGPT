@@ -50,7 +50,7 @@ export default function CitiesTab({ lang, cityId, onSelect, weatherMap, recentCi
       } finally {
         if (myReq === reqId.current) setSearching(false)
       }
-    }, 400)
+    }, 220)
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)

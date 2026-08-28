@@ -1,301 +1,481 @@
 /**
- * Samsung Weather–style 2D person that reacts to live conditions.
- * Pure SVG + CSS — no image assets, snappy, theme-aware.
+ * Samsung Weather–style complete 2D characters.
+ * Filled flat illustration (NOT stick strokes) — full body + props per mood.
  */
 
 import { useMemo } from 'react'
 
-/** Map weather → scene mood for character + props */
 export function characterScene(weather) {
   const c = weather?.current || {}
   const icon = String(c.icon || '').toLowerCase()
-  const cond = String(c.condition || '').toLowerCase()
+  const cond = String(c.condition || c.condition_hi || '').toLowerCase()
   const night = c.isDay === false
   const temp = Number(c.temp)
   const feels = Number(c.feelsLike ?? c.temp)
   const wind = Number(c.wind || 0)
   const pop = Number(weather?.daily?.[0]?.pop ?? 0)
+  const code = Number(c.code || 0)
 
   const storm =
     icon.includes('lightning') ||
     icon.includes('storm') ||
-    /thunder|storm|hail|तूफान|गर्ज/.test(cond)
+    code >= 95 ||
+    /thunder|storm|hail|तूफान|गर्ज|आंधी/.test(cond)
   const rain =
     !storm &&
     (icon.includes('rain') ||
       icon.includes('drizzle') ||
-      /rain|drizzle|shower|बारिश|बौछ/.test(cond) ||
-      pop >= 70)
+      (code >= 51 && code < 70) ||
+      (code >= 80 && code < 90) ||
+      /rain|drizzle|shower|बारिश|बौछ|फुहार/.test(cond) ||
+      pop >= 65)
   const fog = icon.includes('fog') || /fog|mist|haze|कोहरा|धुंध/.test(cond)
   const snow = icon.includes('snow') || /snow|sleet|बर्फ/.test(cond)
-  const clear = icon === 'sun' || /clear|sunny|साफ|साफ़/.test(cond)
-  const cloudy = icon.includes('cloud') || /cloud|overcast|बादल/.test(cond)
+  const clear = icon === 'sun' || code === 0 || code === 1 || /clear|sunny|साफ|साफ़/.test(cond)
+  const cloudy =
+    icon.includes('cloud') || code === 2 || code === 3 || /cloud|overcast|बादल/.test(cond)
 
-  if (storm) return { mood: 'storm', night, windy: wind >= 28 }
-  if (snow) return { mood: 'snow', night, windy: wind >= 25 }
-  if (rain) return { mood: 'rain', night, windy: wind >= 28 }
+  if (storm) return { mood: 'storm', night, windy: wind >= 25 }
+  if (snow) return { mood: 'snow', night, windy: wind >= 22 }
+  if (rain) return { mood: 'rain', night, windy: wind >= 25 }
   if (fog) return { mood: 'fog', night, windy: false }
-  if (night && clear) return { mood: 'night_clear', night: true, windy: wind >= 30 }
-  if (night) return { mood: 'night', night: true, windy: wind >= 30 }
-  if (!Number.isNaN(feels) && feels >= 38) return { mood: 'hot', night: false, windy: wind >= 25 }
-  if (!Number.isNaN(temp) && temp <= 8) return { mood: 'cold', night: false, windy: wind >= 25 }
-  if (clear) return { mood: 'sunny', night: false, windy: wind >= 30 }
-  if (cloudy) return { mood: 'cloudy', night: false, windy: wind >= 28 }
-  return { mood: 'partly', night: false, windy: wind >= 28 }
+  if (night && clear) return { mood: 'night_clear', night: true, windy: wind >= 28 }
+  if (night) return { mood: 'night', night: true, windy: wind >= 28 }
+  if (!Number.isNaN(feels) && feels >= 38) return { mood: 'hot', night: false, windy: wind >= 22 }
+  if (!Number.isNaN(temp) && temp <= 8) return { mood: 'cold', night: false, windy: wind >= 22 }
+  if (clear) return { mood: 'sunny', night: false, windy: wind >= 28 }
+  if (cloudy) return { mood: 'cloudy', night: false, windy: wind >= 25 }
+  return { mood: 'partly', night: false, windy: wind >= 25 }
 }
 
-function SceneFX({ mood, windy }) {
-  if (mood === 'rain' || mood === 'storm') {
-    return (
-      <div className="wx-fx wx-fx-rain" aria-hidden>
-        {Array.from({ length: mood === 'storm' ? 14 : 10 }, (_, i) => (
-          <span
+/* ── Shared palette ── */
+const SKIN = '#E8B888'
+const SKIN_SH = '#D49A68'
+const HAIR = '#3D2914'
+const BOOT_DK = '#1B2430'
+const BOOT_BR = '#5C4030'
+
+function DropFX({ count = 12, storm = false }) {
+  return (
+    <g className="wx-svg-rain" aria-hidden>
+      {Array.from({ length: count }, (_, i) => {
+        const x = 18 + ((i * 17) % 140)
+        const y = 8 + (i % 5) * 6
+        const h = storm && i % 4 === 0 ? 16 : 10
+        return (
+          <line
             key={i}
-            className={mood === 'storm' && i % 5 === 0 ? 'wx-drop is-bolt' : 'wx-drop'}
+            className={storm && i % 4 === 0 ? 'wx-svg-drop bolt' : 'wx-svg-drop'}
+            x1={x}
+            y1={y}
+            x2={x - 2}
+            y2={y + h}
+            stroke={storm && i % 4 === 0 ? '#FFE08A' : 'rgba(200,230,255,0.85)'}
+            strokeWidth={storm && i % 4 === 0 ? 2.2 : 1.6}
+            strokeLinecap="round"
             style={{
-              left: `${(i * 17 + 5) % 92}%`,
-              animationDelay: `${(i % 7) * 0.12}s`,
-              animationDuration: `${0.7 + (i % 4) * 0.12}s`,
+              animationDelay: `${(i % 7) * 0.11}s`,
+              animationDuration: `${0.65 + (i % 4) * 0.12}s`,
             }}
           />
-        ))}
-      </div>
-    )
-  }
-  if (mood === 'snow') {
-    return (
-      <div className="wx-fx wx-fx-snow" aria-hidden>
-        {Array.from({ length: 12 }, (_, i) => (
-          <span
-            key={i}
-            className="wx-flake"
-            style={{
-              left: `${(i * 13 + 8) % 90}%`,
-              animationDelay: `${(i % 6) * 0.35}s`,
-              animationDuration: `${2.4 + (i % 5) * 0.4}s`,
-            }}
-          />
-        ))}
-      </div>
-    )
-  }
-  if (mood === 'sunny' || mood === 'hot') {
-    return (
-      <div className="wx-fx wx-fx-sun" aria-hidden>
-        <span className="wx-sun-disc" />
-        <span className="wx-sun-ray r1" />
-        <span className="wx-sun-ray r2" />
-        <span className="wx-sun-ray r3" />
-      </div>
-    )
-  }
-  if (mood === 'night_clear' || mood === 'night') {
-    return (
-      <div className="wx-fx wx-fx-night" aria-hidden>
-        <span className="wx-moon" />
-        <span className="wx-star s1" />
-        <span className="wx-star s2" />
-        <span className="wx-star s3" />
-      </div>
-    )
-  }
-  if (mood === 'fog') {
-    return (
-      <div className="wx-fx wx-fx-fog" aria-hidden>
-        <span className="wx-fog-band b1" />
-        <span className="wx-fog-band b2" />
-      </div>
-    )
-  }
-  if (windy) {
-    return (
-      <div className="wx-fx wx-fx-wind" aria-hidden>
-        <span className="wx-gust g1" />
-        <span className="wx-gust g2" />
-        <span className="wx-gust g3" />
-      </div>
-    )
-  }
-  return null
+        )
+      })}
+    </g>
+  )
 }
 
-/** Shared body proportions — Samsung flat 2D look */
-function PersonSVG({ mood, windy }) {
-  const coat =
-    mood === 'rain' || mood === 'storm' || mood === 'snow' || mood === 'cold'
-      ? '#2a6f8f'
-      : mood === 'hot'
-        ? '#e8a54b'
-        : mood === 'night' || mood === 'night_clear'
-          ? '#3d4f7a'
-          : '#4a7fb5'
-  const pants =
-    mood === 'hot' ? '#c4a574' : mood === 'cold' || mood === 'snow' ? '#2c3a52' : '#5c6b7a'
-  const boots =
-    mood === 'rain' || mood === 'storm' || mood === 'snow' ? '#1a2433' : '#3d4a5c'
-  const skin = '#c9956c'
-  const hair = '#2a1f18'
+function CloudBlob({ cx, cy, sc = 1, fill = 'rgba(255,255,255,0.55)' }) {
+  return (
+    <g transform={`translate(${cx} ${cy}) scale(${sc})`}>
+      <ellipse cx="0" cy="0" rx="22" ry="12" fill={fill} />
+      <ellipse cx="-14" cy="2" rx="14" ry="10" fill={fill} />
+      <ellipse cx="14" cy="3" rx="14" ry="9" fill={fill} />
+      <ellipse cx="-4" cy="-6" rx="12" ry="9" fill={fill} />
+    </g>
+  )
+}
 
-  const umbrella = mood === 'rain' || mood === 'storm'
-  const scarf = mood === 'cold' || mood === 'snow'
-  const sunglasses = mood === 'sunny' || mood === 'hot'
-  const phone = mood === 'cloudy' || mood === 'partly' || mood === 'fog'
-  const lantern = mood === 'night' || mood === 'night_clear'
+/** Complete filled person — one cohesive illustration per mood */
+function PersonComplete({ mood, windy }) {
+  const isRain = mood === 'rain' || mood === 'storm'
+  const isSnow = mood === 'snow'
+  const isCold = mood === 'cold' || isSnow
+  const isHot = mood === 'hot'
+  const isSun = mood === 'sunny' || isHot
+  const isNight = mood === 'night' || mood === 'night_clear'
+  const isFog = mood === 'fog'
+  const isCloud = mood === 'cloudy' || mood === 'partly'
+
+  // Coat / outfit colors
+  const coat = isRain || isStormish(mood) || isCold
+    ? '#3A8FB5'
+    : isHot
+      ? '#F0A94A'
+      : isNight
+        ? '#4A5F8C'
+        : '#5B9FD4'
+  const coatDk = isRain || isStormish(mood) || isCold
+    ? '#2A6F8F'
+    : isHot
+      ? '#D4892E'
+      : isNight
+        ? '#3A4A6E'
+        : '#3D7EB0'
+  const pants = isHot ? '#C4A06A' : isCold ? '#2C3A52' : '#5A6B7C'
+  const boots = isRain || isStormish(mood) || isSnow ? BOOT_DK : BOOT_BR
 
   return (
     <svg
       className={`wx-person-svg ${windy ? 'is-windy' : ''} mood-${mood}`}
-      viewBox="0 0 160 220"
+      viewBox="0 0 200 260"
+      width="100%"
+      height="100%"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
+      preserveAspectRatio="xMidYMax meet"
     >
-      {/* ground puddle / shadow */}
-      <ellipse
-        cx="80"
-        cy="208"
-        rx={umbrella ? 42 : 34}
-        ry="7"
-        fill={umbrella ? 'rgba(80,140,200,0.35)' : 'rgba(0,0,0,0.22)'}
-        className="wx-shadow"
-      />
-      {umbrella && (
-        <ellipse cx="78" cy="210" rx="18" ry="3.5" fill="rgba(100,170,230,0.45)" className="wx-puddle" />
+      {/* ── Atmosphere behind person ── */}
+      {(isSun) && (
+        <g className="wx-svg-sun">
+          <circle cx="158" cy="42" r="22" fill="#FFD56A" className="wx-sun-core" />
+          <circle cx="158" cy="42" r="30" fill="rgba(255,210,100,0.28)" className="wx-sun-halo" />
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+            <line
+              key={deg}
+              className="wx-sun-spoke"
+              x1="158"
+              y1="42"
+              x2={158 + Math.cos((deg * Math.PI) / 180) * 40}
+              y2={42 + Math.sin((deg * Math.PI) / 180) * 40}
+              stroke="rgba(255,210,100,0.7)"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
+          ))}
+        </g>
+      )}
+      {isNight && (
+        <g className="wx-svg-night">
+          <circle cx="160" cy="40" r="18" fill="#F0EBD0" className="wx-moon-core" />
+          <circle cx="168" cy="34" r="14" fill="rgba(10,20,40,0.35)" />
+          <circle cx="130" cy="28" r="1.8" fill="#fff" className="wx-star" />
+          <circle cx="145" cy="18" r="1.2" fill="#fff" className="wx-star" />
+          <circle cx="175" cy="22" r="1.5" fill="#fff" className="wx-star" />
+          <circle cx="120" cy="48" r="1.1" fill="#fff" className="wx-star" />
+        </g>
+      )}
+      {(isCloud || isFog) && (
+        <g className="wx-svg-clouds" opacity="0.85">
+          <CloudBlob cx="150" cy="36" sc={1.1} fill="rgba(255,255,255,0.5)" />
+          <CloudBlob cx="40" cy="48" sc={0.75} fill="rgba(255,255,255,0.35)" />
+        </g>
+      )}
+      {isFog && (
+        <g className="wx-svg-fog" opacity="0.55">
+          <ellipse cx="100" cy="200" rx="70" ry="10" fill="rgba(220,230,240,0.5)" className="wx-fog-e" />
+          <ellipse cx="100" cy="175" rx="55" ry="8" fill="rgba(220,230,240,0.4)" className="wx-fog-e" />
+        </g>
+      )}
+      {isRain && <DropFX count={mood === 'storm' ? 16 : 12} storm={mood === 'storm'} />}
+      {isSnow && (
+        <g className="wx-svg-snow">
+          {Array.from({ length: 14 }, (_, i) => (
+            <circle
+              key={i}
+              className="wx-svg-flake"
+              cx={20 + ((i * 19) % 160)}
+              cy={12 + (i % 6) * 8}
+              r={1.5 + (i % 3) * 0.6}
+              fill="#fff"
+              style={{
+                animationDelay: `${(i % 6) * 0.3}s`,
+                animationDuration: `${2.2 + (i % 4) * 0.35}s`,
+              }}
+            />
+          ))}
+        </g>
+      )}
+      {mood === 'storm' && (
+        <path
+          className="wx-svg-flash"
+          d="M118 20 L108 48 L116 48 L106 78"
+          stroke="#FFE566"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
       )}
 
-      {/* legs */}
+      {/* ── Ground ── */}
+      <ellipse
+        cx="100"
+        cy="246"
+        rx={isRain ? 52 : 42}
+        ry="8"
+        fill={isRain ? 'rgba(80,150,210,0.35)' : 'rgba(0,0,0,0.28)'}
+        className="wx-shadow"
+      />
+      {isRain && (
+        <ellipse cx="96" cy="248" rx="22" ry="4.5" fill="rgba(120,180,230,0.5)" className="wx-puddle" />
+      )}
+
+      {/* ── LEGS (filled) ── */}
       <g className="wx-legs">
-        <path d="M68 148 L62 198" stroke={pants} strokeWidth="14" strokeLinecap="round" />
-        <path d="M92 148 L98 198" stroke={pants} strokeWidth="14" strokeLinecap="round" />
-        <path d="M52 198 L70 198" stroke={boots} strokeWidth="11" strokeLinecap="round" />
-        <path d="M90 198 L108 198" stroke={boots} strokeWidth="11" strokeLinecap="round" />
+        <path
+          d="M82 168 C80 188 76 210 74 228 L90 228 C92 210 94 188 96 168 Z"
+          fill={pants}
+        />
+        <path
+          d="M104 168 C106 188 110 210 112 228 L128 228 C126 210 122 188 118 168 Z"
+          fill={pants}
+        />
+        {/* boots */}
+        <path d="M68 226 C68 226 72 236 92 234 L90 226 Z" fill={boots} />
+        <path d="M110 226 C110 226 114 236 134 234 L128 226 Z" fill={boots} />
       </g>
 
-      {/* torso / coat */}
+      {/* ── TORSO (filled coat) ── */}
       <g className="wx-torso">
         <path
-          d="M52 78 C52 78 48 145 55 148 L105 148 C112 145 108 78 108 78 C100 72 60 72 52 78Z"
+          d="M70 96
+             C66 100 64 130 68 168
+             L132 168
+             C136 130 134 100 130 96
+             C120 88 80 88 70 96 Z"
           fill={coat}
         />
-        {/* hoodie / collar */}
-        {(mood === 'rain' || mood === 'storm' || mood === 'cold' || mood === 'snow') && (
+        {/* darker side panel */}
+        <path
+          d="M100 96 L100 168 L132 168 C136 130 134 100 130 96 C120 90 108 92 100 96 Z"
+          fill={coatDk}
+          opacity="0.45"
+        />
+        {/* zipper / center line */}
+        <line x1="100" y1="100" x2="100" y2="164" stroke="rgba(0,0,0,0.18)" strokeWidth="2" />
+
+        {/* hoodie hood (rain/cold) */}
+        {(isRain || isStormish(mood) || isCold) && (
           <path
-            d="M58 78 C62 62 98 62 102 78 L96 86 C90 76 70 76 64 86Z"
-            fill={coat}
-            opacity="0.95"
+            d="M72 100
+               C76 78 124 78 128 100
+               C118 90 82 90 72 100 Z"
+            fill={coatDk}
           />
         )}
-        {/* bag strap */}
-        {(umbrella || phone) && (
-          <path d="M108 95 Q130 120 112 150" stroke="#1e3a4a" strokeWidth="5" fill="none" />
-        )}
-        {(umbrella || phone) && (
-          <path
-            d="M108 145 C108 145 128 148 126 168 C124 178 108 176 108 165Z"
-            fill="#1e3a4a"
-          />
+
+        {/* bag (rain / cloudy) */}
+        {(isRain || isCloud) && (
+          <g>
+            <path d="M128 108 Q148 130 132 168" stroke="#1E3348" strokeWidth="5" fill="none" strokeLinecap="round" />
+            <path
+              d="M126 155 C126 155 148 158 146 182 C144 192 124 190 126 175 Z"
+              fill="#1E3348"
+            />
+          </g>
         )}
       </g>
 
-      {/* arms */}
+      {/* ── ARMS + PROPS ── */}
       <g className="wx-arms">
-        {umbrella ? (
+        {isRain || isStormish(mood) ? (
           <>
-            {/* left arm holding umbrella shaft */}
-            <path d="M58 95 C40 110 48 140 70 132" stroke={coat} strokeWidth="13" strokeLinecap="round" />
-            {/* right arm relaxed */}
-            <path d="M102 95 C118 115 112 145 98 148" stroke={coat} strokeWidth="12" strokeLinecap="round" />
-            {/* umbrella shaft */}
+            {/* left arm up holding umbrella */}
+            <path
+              d="M72 108
+                 C52 118 48 140 62 152
+                 C70 158 78 150 82 142
+                 C78 128 76 114 72 108 Z"
+              fill={coat}
+            />
+            <circle cx="64" cy="150" r="7" fill={SKIN} />
+            {/* right arm down */}
+            <path
+              d="M128 108
+                 C148 120 150 148 136 160
+                 C128 166 120 158 118 148
+                 C122 130 126 114 128 108 Z"
+              fill={coatDk}
+            />
+            <circle cx="134" cy="158" r="7" fill={SKIN} />
+            {/* UMBRELLA — complete canopy */}
             <g className="wx-umbrella">
-              <path d="M70 132 L70 48" stroke="#1a2433" strokeWidth="3.5" strokeLinecap="round" />
-              <path d="M70 48 Q70 28 48 42 Q70 18 92 42 Q70 28 70 48" fill="#1a2a40" />
-              <path d="M48 42 Q70 28 92 42" stroke="#0d1520" strokeWidth="2" fill="none" />
-              {/* handle curve */}
-              <path d="M70 132 Q62 142 68 148" stroke="#1a2433" strokeWidth="3.5" fill="none" strokeLinecap="round" />
+              <line x1="64" y1="150" x2="64" y2="58" stroke="#1A2433" strokeWidth="3.5" strokeLinecap="round" />
+              <path
+                d="M64 58
+                   C64 58 64 36 28 52
+                   C46 30 64 26 64 26
+                   C64 26 82 30 100 52
+                   C64 36 64 58 64 58 Z"
+                fill="#1A2F4A"
+              />
+              <path
+                d="M28 52 C46 38 64 34 64 34 C64 34 82 38 100 52"
+                stroke="#0D1828"
+                strokeWidth="2"
+                fill="none"
+              />
+              {/* canopy ribs highlight */}
+              <path d="M64 34 L40 50" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
+              <path d="M64 34 L88 50" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
+              {/* curved handle */}
+              <path
+                d="M64 150 Q54 162 62 168"
+                stroke="#1A2433"
+                strokeWidth="3.5"
+                fill="none"
+                strokeLinecap="round"
+              />
             </g>
           </>
-        ) : sunglasses && !scarf ? (
+        ) : isSun ? (
           <>
-            {/* arms slightly out — relaxed sunny */}
-            <path d="M55 95 C38 120 42 150 58 152" stroke={coat} strokeWidth="12" strokeLinecap="round" />
-            <path d="M105 95 C122 120 118 150 102 152" stroke={coat} strokeWidth="12" strokeLinecap="round" />
+            {/* relaxed arms out */}
+            <path
+              d="M72 110 C50 128 48 158 68 168 C76 172 84 162 84 152 C80 134 76 118 72 110 Z"
+              fill={coat}
+            />
+            <circle cx="66" cy="166" r="7.5" fill={SKIN} />
+            <path
+              d="M128 110 C150 128 152 158 132 168 C124 172 116 162 116 152 C120 134 124 118 128 110 Z"
+              fill={coatDk}
+            />
+            <circle cx="134" cy="166" r="7.5" fill={SKIN} />
           </>
-        ) : phone ? (
+        ) : isNight ? (
           <>
-            <path d="M55 95 C40 118 48 148 62 150" stroke={coat} strokeWidth="12" strokeLinecap="round" />
-            <path d="M105 92 C120 100 118 120 108 128" stroke={coat} strokeWidth="12" strokeLinecap="round" />
-            {/* phone */}
-            <rect x="100" y="118" width="14" height="22" rx="2.5" fill="#1a2433" className="wx-phone" />
-            <rect x="102" y="121" width="10" height="14" rx="1" fill="#4a9fd8" opacity="0.7" />
-          </>
-        ) : lantern ? (
-          <>
-            <path d="M55 95 C40 118 48 148 62 150" stroke={coat} strokeWidth="12" strokeLinecap="round" />
-            <path d="M105 95 C122 110 118 140 100 145" stroke={coat} strokeWidth="12" strokeLinecap="round" />
+            <path
+              d="M72 110 C52 126 50 156 68 166 C76 170 84 160 84 150 C80 132 76 116 72 110 Z"
+              fill={coat}
+            />
+            <circle cx="66" cy="164" r="7" fill={SKIN} />
+            <path
+              d="M128 110 C148 124 150 150 134 162 C126 168 118 158 118 148 C122 130 126 116 128 110 Z"
+              fill={coatDk}
+            />
+            <circle cx="132" cy="160" r="7" fill={SKIN} />
+            {/* lantern */}
             <g className="wx-lantern">
-              <rect x="92" y="145" width="16" height="20" rx="2" fill="#e8c86a" opacity="0.9" />
-              <path d="M100 145 L100 138" stroke="#c9a84a" strokeWidth="2" />
-              <circle cx="100" cy="155" r="4" fill="#fff6c8" className="wx-lantern-glow" />
+              <rect x="122" y="168" width="18" height="22" rx="3" fill="#E8C86A" />
+              <rect x="125" y="172" width="12" height="12" rx="1" fill="#FFF6C8" className="wx-lantern-glow" />
+              <line x1="131" y1="168" x2="131" y2="160" stroke="#C9A84A" strokeWidth="2" />
+              <circle cx="131" cy="158" r="3" fill="#C9A84A" />
             </g>
           </>
         ) : (
           <>
-            <path d="M55 95 C40 120 44 150 60 152" stroke={coat} strokeWidth="12" strokeLinecap="round" />
-            <path d="M105 95 C120 120 116 150 100 152" stroke={coat} strokeWidth="12" strokeLinecap="round" />
+            {/* cloudy / fog / default — phone pose */}
+            <path
+              d="M72 110 C52 126 52 156 70 166 C78 170 86 160 86 150 C82 132 76 116 72 110 Z"
+              fill={coat}
+            />
+            <circle cx="68" cy="164" r="7" fill={SKIN} />
+            <path
+              d="M128 108 C146 118 148 140 136 150 C128 156 120 148 120 140 C124 124 126 112 128 108 Z"
+              fill={coatDk}
+            />
+            <circle cx="132" cy="148" r="6.5" fill={SKIN} />
+            <g className="wx-phone">
+              <rect x="124" y="132" width="16" height="26" rx="3" fill="#1A2433" />
+              <rect x="126" y="136" width="12" height="16" rx="1.5" fill="#5BB8E8" opacity="0.85" />
+              <circle cx="132" cy="155" r="1.5" fill="#445" />
+            </g>
           </>
         )}
       </g>
 
       {/* scarf */}
-      {scarf && (
+      {isCold && (
         <g className="wx-scarf">
-          <path d="M62 88 Q80 100 98 88" stroke="#c45c4a" strokeWidth="10" strokeLinecap="round" />
-          <path d="M88 94 L92 130" stroke="#c45c4a" strokeWidth="8" strokeLinecap="round" />
+          <path
+            d="M78 108 C90 122 110 122 122 108 C116 118 84 118 78 108 Z"
+            fill="#C45C4A"
+          />
+          <path d="M108 116 L114 158 L106 158 L104 116 Z" fill="#A84838" />
+          <path d="M106 156 l4 8 m-2 -4 l4 6" stroke="#C45C4A" strokeWidth="3" strokeLinecap="round" />
         </g>
       )}
 
-      {/* head */}
+      {/* ── HEAD (complete) ── */}
       <g className="wx-head">
-        <circle cx="80" cy="58" r="22" fill={skin} />
+        {/* neck */}
+        <rect x="92" y="88" width="16" height="14" rx="4" fill={SKIN} />
+        {/* face */}
+        <circle cx="100" cy="72" r="26" fill={SKIN} />
+        <ellipse cx="100" cy="78" rx="20" ry="18" fill={SKIN_SH} opacity="0.15" />
+
         {/* hair */}
         <path
-          d="M58 55 C58 38 102 38 102 55 C98 48 90 46 80 46 C70 46 62 48 58 55Z"
-          fill={hair}
+          d="M76 70
+             C76 48 124 48 124 70
+             C120 58 110 54 100 54
+             C90 54 80 58 76 70 Z"
+          fill={HAIR}
         />
-        {(mood === 'rain' || mood === 'storm' || mood === 'cold' || mood === 'snow') && (
-          /* hood fringe */
-          <path d="M58 52 C62 42 98 42 102 52" stroke={coat} strokeWidth="6" fill="none" opacity="0.5" />
+        {/* side hair */}
+        <path d="M76 70 C74 82 78 88 82 90" stroke={HAIR} strokeWidth="8" strokeLinecap="round" fill="none" />
+        <path d="M124 70 C126 82 122 88 118 90" stroke={HAIR} strokeWidth="8" strokeLinecap="round" fill="none" />
+
+        {/* hood rim over hair when raining */}
+        {(isRain || isStormish(mood)) && (
+          <path
+            d="M74 78 C78 58 122 58 126 78"
+            stroke={coatDk}
+            strokeWidth="10"
+            fill="none"
+            strokeLinecap="round"
+            opacity="0.9"
+          />
         )}
-        {/* face */}
-        {sunglasses ? (
+
+        {/* face features */}
+        {isSun ? (
           <g>
-            <rect x="66" y="56" width="12" height="7" rx="2" fill="#1a2433" />
-            <rect x="82" y="56" width="12" height="7" rx="2" fill="#1a2433" />
-            <path d="M78 59 H82" stroke="#1a2433" strokeWidth="1.5" />
+            {/* sunglasses */}
+            <rect x="82" y="68" width="14" height="9" rx="3" fill="#1A2433" />
+            <rect x="104" y="68" width="14" height="9" rx="3" fill="#1A2433" />
+            <path d="M96 72 H104" stroke="#1A2433" strokeWidth="2" />
+            <rect x="84" y="69.5" width="5" height="3" rx="1" fill="rgba(255,255,255,0.25)" />
+            {/* smile */}
+            <path d="M90 84 Q100 92 110 84" stroke="#A86B48" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+          </g>
+        ) : mood === 'storm' || isHot ? (
+          <g>
+            <circle cx="90" cy="72" r="2.8" fill="#2A1F18" />
+            <circle cx="110" cy="72" r="2.8" fill="#2A1F18" />
+            {/* worried mouth */}
+            <path d="M90 86 Q100 80 110 86" stroke="#A86B48" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+            {/* brow */}
+            <path d="M84 66 L94 68" stroke="#2A1F18" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M116 66 L106 68" stroke="#2A1F18" strokeWidth="1.8" strokeLinecap="round" />
           </g>
         ) : (
           <g>
-            <circle cx="72" cy="58" r="2.2" fill="#2a1f18" />
-            <circle cx="88" cy="58" r="2.2" fill="#2a1f18" />
-            {/* smile / concern */}
-            {mood === 'storm' || mood === 'hot' ? (
-              <path d="M74 68 Q80 64 86 68" stroke="#8a5a40" strokeWidth="1.8" fill="none" strokeLinecap="round" />
-            ) : (
-              <path d="M74 66 Q80 72 86 66" stroke="#8a5a40" strokeWidth="1.8" fill="none" strokeLinecap="round" />
-            )}
+            <circle cx="90" cy="72" r="2.8" fill="#2A1F18" />
+            <circle cx="110" cy="72" r="2.8" fill="#2A1F18" />
+            {/* eye shine */}
+            <circle cx="91" cy="71" r="0.9" fill="#fff" opacity="0.7" />
+            <circle cx="111" cy="71" r="0.9" fill="#fff" opacity="0.7" />
+            <path d="M90 84 Q100 91 110 84" stroke="#A86B48" strokeWidth="2.2" fill="none" strokeLinecap="round" />
           </g>
         )}
       </g>
 
-      {/* steam / heat waves for hot */}
-      {mood === 'hot' && (
-        <g className="wx-heat" opacity="0.55">
-          <path d="M48 100 Q44 90 48 80" stroke="#ffb84d" strokeWidth="2" fill="none" className="wx-heat-w" />
-          <path d="M112 100 Q116 90 112 80" stroke="#ffb84d" strokeWidth="2" fill="none" className="wx-heat-w" />
+      {/* heat waves */}
+      {isHot && (
+        <g className="wx-heat" opacity="0.65">
+          <path d="M48 120 Q42 108 48 96" stroke="#FFB84D" strokeWidth="2.5" fill="none" className="wx-heat-w" strokeLinecap="round" />
+          <path d="M152 120 Q158 108 152 96" stroke="#FFB84D" strokeWidth="2.5" fill="none" className="wx-heat-w" strokeLinecap="round" />
+          <path d="M40 140 Q34 128 40 116" stroke="#FFB84D" strokeWidth="2" fill="none" className="wx-heat-w" strokeLinecap="round" />
         </g>
       )}
     </svg>
   )
+}
+
+function isStormish(mood) {
+  return mood === 'storm'
 }
 
 function tipFor(mood, lang) {
@@ -316,29 +496,34 @@ function tipFor(mood, lang) {
   return map[mood] || (hi ? 'मौसम अपडेट' : 'Weather update')
 }
 
-/**
- * @param {{ weather: object, lang?: string, className?: string }} props
- */
 export default function WeatherCharacter({ weather, lang = 'en', className = '' }) {
-  const scene = useMemo(() => characterScene(weather), [
-    weather?.current?.icon,
-    weather?.current?.condition,
-    weather?.current?.isDay,
-    weather?.current?.temp,
-    weather?.current?.feelsLike,
-    weather?.current?.wind,
-    weather?.daily?.[0]?.pop,
-    weather?.fetchedAt,
-  ])
+  const scene = useMemo(
+    () => characterScene(weather),
+    [
+      weather?.current?.icon,
+      weather?.current?.condition,
+      weather?.current?.condition_hi,
+      weather?.current?.isDay,
+      weather?.current?.temp,
+      weather?.current?.feelsLike,
+      weather?.current?.wind,
+      weather?.current?.code,
+      weather?.daily?.[0]?.pop,
+      weather?.fetchedAt,
+    ],
+  )
 
   const { mood, windy } = scene
   const tip = tipFor(mood, lang)
 
   return (
-    <div className={`wx-character mood-${mood} ${windy ? 'is-windy' : ''} ${className}`} aria-hidden>
-      <SceneFX mood={mood} windy={windy} />
+    <div
+      className={`wx-character mood-${mood} ${windy ? 'is-windy' : ''} ${className}`}
+      role="img"
+      aria-label={tip}
+    >
       <div className="wx-character-stage">
-        <PersonSVG mood={mood} windy={windy} />
+        <PersonComplete mood={mood} windy={windy} />
       </div>
       <p className="wx-character-tip">{tip}</p>
     </div>

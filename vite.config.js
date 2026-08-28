@@ -58,6 +58,8 @@ export default defineConfig({
         importScripts: ['/sw-push-click.js'],
         // Smaller precache transfer on low bandwidth
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest,txt,json}'],
+        // Don't force-download charts/motion on first visit — runtime cache when opened
+        globIgnores: ['**/charts-*.js', '**/motion-*.js', '**/workbox-*.js', '**/sw.js'],
         runtimeCaching: [
           {
             // Same-origin API: network first, short offline fallback for weather only

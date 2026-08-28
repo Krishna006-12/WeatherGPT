@@ -8,6 +8,14 @@
 
 import { CITIES, getCity } from '../data/cities'
 import { dbGetWeather, dbPutWeather, isSlowNetwork } from './db'
+import {
+  wmoInfoHonest,
+  rainIntensityFromMm,
+  calibratePop as reCalibratePop,
+  dayPopFrom as reDayPopFrom,
+  buildLockedWeatherFacts,
+  formatSourceFooter,
+} from './ruleEngine'
 
 const WMO = {
   0: { en: 'Clear sky', hi: 'साफ आसमान', icon: 'sun', severity: 'green' },
@@ -30,19 +38,43 @@ const WMO = {
   80: { en: 'Slight rain showers', hi: 'हल्की बौछारें', icon: 'cloud-rain', severity: 'yellow' },
   81: { en: 'Rain showers', hi: 'बौछारें', icon: 'cloud-rain', severity: 'amber' },
   82: { en: 'Violent rain showers', hi: 'तेज़ बौछारें', icon: 'cloud-rain', severity: 'red' },
-  95: { en: 'Thunderstorm', hi: 'आंधी-तूफान', icon: 'cloud-lightning', severity: 'red' },
-  96: { en: 'Thunderstorm with hail', hi: 'ओलावृष्टि तूफान', icon: 'cloud-lightning', severity: 'red' },
-  99: { en: 'Severe thunderstorm with hail', hi: 'गंभीर ओलावृष्टि', icon: 'cloud-lightning', severity: 'red' },
+  95: { en: 'Thunderstorm', hi: 'आंधी-तूफान', icon: 'cloud-lightning', severity: 'amber' },
+  96: { en: 'Thunderstorm · hail possible (model)', hi: 'तूफान · ओले संभव (मॉडल)', icon: 'cloud-lightning', severity: 'red' },
+  99: { en: 'Severe thunderstorm · heavy hail possible (model)', hi: 'गंभीर तूफान · भारी ओले संभव (मॉडल)', icon: 'cloud-lightning', severity: 'red' },
 }
 
 export function wmoInfo(code, lang = 'en') {
-  const info = WMO[code] || WMO[2]
-  return {
-    condition: lang === 'hi' ? info.hi : info.en,
-    icon: info.icon,
-    severity: info.severity,
-    code,
+  // Prefer rule-engine honest table (hail = possible, not guaranteed)
+  try {
+    const h = wmoInfoHonest(code, lang)
+    return {
+      condition: h.condition,
+      icon: h.icon,
+      severity: h.severity,
+      code: h.code,
+      hailPossible: h.hailPossible,
+      storm: h.storm,
+      note: h.note,
+      intensity: h.intensity,
+    }
+  } catch {
+    const info = WMO[code] || WMO[2]
+    return {
+      condition: lang === 'hi' ? info.hi : info.en,
+      icon: info.icon,
+      severity: info.severity,
+      code,
+      hailPossible: code === 96 || code === 99,
+      storm: code >= 95,
+      note: null,
+      intensity: null,
+    }
   }
+}
+
+// Re-export calibrate helpers (single implementation in ruleEngine)
+export function calibratePop(rawPop, rainMm = 0, code = 0) {
+  return reCalibratePop(rawPop, rainMm, code)
 }
 
 function safeMax(arr, fallback = 0) {
@@ -50,69 +82,8 @@ function safeMax(arr, fallback = 0) {
   return Math.max(...arr.map((n) => (Number.isFinite(n) ? n : fallback)))
 }
 
-/**
- * Honest rain-chance display (closer to what users see on Google/Apple).
- * Open-Meteo daily `precipitation_probability_max` is the *peak hourly*
- * probability that day — a single 40‑min shower can make the day read 95%
- * even when total mm is tiny. We blend peak POP with expected amount + WMO
- * code so dry/drizzle days don't look like near-certain washouts.
- */
-export function calibratePop(rawPop, rainMm = 0, code = 0) {
-  let p = Number(rawPop)
-  if (!Number.isFinite(p)) p = 0
-  p = Math.max(0, Math.min(100, p))
-  const mm = Math.max(0, Number(rainMm) || 0)
-  const c = Number(code) || 0
-
-  // Thunderstorm / heavy shower codes — keep elevated but cap the "always 99" feel
-  if (c >= 95) return Math.round(Math.min(92, Math.max(p * 0.92, 55 + Math.min(mm, 40))))
-  if (c >= 80 && c < 90) {
-    // showers
-    const base = p * 0.85
-    const fromMm = mm < 0.2 ? 18 : mm < 1 ? 35 : mm < 5 ? 55 : mm < 15 ? 70 : 82
-    return Math.round(Math.min(88, Math.max(fromMm, base * 0.7 + fromMm * 0.3)))
-  }
-
-  // Essentially dry day: high peak POP is misleading
-  if (mm < 0.1) {
-    if (p >= 70) return Math.min(28, Math.round(p * 0.25 + 5))
-    if (p >= 40) return Math.min(22, Math.round(p * 0.35))
-    return Math.round(Math.min(p, 15))
-  }
-  if (mm < 0.5) {
-    // Trace / spit
-    return Math.round(Math.min(42, p * 0.45 + 8))
-  }
-  if (mm < 2) {
-    return Math.round(Math.min(58, p * 0.55 + 12 + mm * 4))
-  }
-  if (mm < 8) {
-    return Math.round(Math.min(78, p * 0.7 + 10 + mm * 1.5))
-  }
-  if (mm < 25) {
-    return Math.round(Math.min(88, Math.max(p * 0.85, 50 + mm)))
-  }
-  // Heavy accumulation — still avoid 99% wallpaper
-  return Math.round(Math.min(94, Math.max(p * 0.9, 70)))
-}
-
-/** Prefer day-representative POP: calibrated daily max, cross-checked with hourly peaks. */
 function dayPopFrom(dailyPopMax, rainMm, code, hourlyPopsForDay = []) {
-  const raw = dailyPopMax ?? 0
-  let peakHourly = raw
-  if (hourlyPopsForDay.length) {
-    const finite = hourlyPopsForDay.filter((n) => Number.isFinite(n))
-    if (finite.length) {
-      // Use 75th-percentile-ish of hourly (not absolute max of a single spike)
-      const sorted = [...finite].sort((a, b) => a - b)
-      const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.75))
-      const p75 = sorted[idx]
-      const mx = sorted[sorted.length - 1]
-      peakHourly = Math.round(p75 * 0.65 + mx * 0.35)
-    }
-  }
-  const blendedRaw = Math.round((Number(raw) || 0) * 0.55 + peakHourly * 0.45)
-  return calibratePop(blendedRaw || raw, rainMm, code)
+  return reDayPopFrom(dailyPopMax, rainMm, code, hourlyPopsForDay)
 }
 
 function soilMoistureLevel(mmRecent, mmForecast, humidity) {
@@ -123,24 +94,27 @@ function soilMoistureLevel(mmRecent, mmForecast, humidity) {
 }
 
 function irrigationAdvice(recent, forecast, soil, lang) {
+  const disc = lang === 'hi'
+    ? ' (केवल मौसम-प्रॉक्सी — फसल अवस्था/मिट्टी सेंसर नहीं)'
+    : ' (weather-proxy only — no crop stage/soil sensor)'
   if (soil.level === 'high' || forecast > 40) {
-    return lang === 'hi'
-      ? 'अगले 3–4 दिन सिंचाई रोकें। जल निकासी सुनिश्चित करें।'
-      : 'Hold irrigation for 3–4 days. Ensure field drainage is clear.'
+    return (lang === 'hi'
+      ? 'अगले 3–4 दिन सिंचाई रोकने पर विचार। जल निकासी सुनिश्चित करें।'
+      : 'Consider holding irrigation 3–4 days. Ensure field drainage is clear.') + disc
   }
   if (soil.level === 'low' && forecast < 10) {
-    return lang === 'hi'
-      ? 'इस सप्ताह हल्की सिंचाई करें — मिट्टी सूखी है, बारिश कम संभावना।'
-      : 'Light irrigation recommended this week — soil is dry, low rain chance.'
+    return (lang === 'hi'
+      ? 'इस सप्ताह हल्की सिंचाई — मिट्टी सूखी संकेत, बारिश कम।'
+      : 'Light irrigation this week — dry-soil signal, low rain.') + disc
   }
   if (forecast >= 15 && forecast <= 40) {
-    return lang === 'hi'
-      ? 'सिंचाई टालें; मध्यम बारिश की संभावना। रोपाई/छिड़काव के लिए सुबह चुनें।'
-      : 'Defer irrigation; moderate rain likely. Prefer morning for spraying/sowing.'
+    return (lang === 'hi'
+      ? 'सिंचाई टालने पर विचार; मध्यम बारिश संकेत। छिड़काव लेबल/स्थानीय सलाह से।'
+      : 'Consider deferring irrigation; moderate rain signal. Spray per label/local advice.') + disc
   }
-  return lang === 'hi'
-    ? 'मिट्टी नमी मध्यम — जरूरत अनुसार हल्की सिंचाई।'
-    : 'Soil moisture medium — light irrigation only if crop shows stress.'
+  return (lang === 'hi'
+    ? 'मिट्टी नमी मध्यम संकेत — तनाव दिखे तो हल्की सिंचाई।'
+    : 'Medium soil-moisture signal — light irrigation only if crop shows stress.') + disc
 }
 
 function buildAlerts(city, daily, current) {
@@ -153,22 +127,32 @@ function buildAlerts(city, daily, current) {
   const todayPop = daily.precipitation_probability_max?.[0] || 0
   const code = current.weather_code ?? current.weathercode ?? 0
 
-  if (maxCode >= 95 || (maxRain > 100 && maxPop > 70)) {
+  // WMO 95 = thunderstorm (not automatic RED / not hail guarantee)
+  // WMO 96/99 = hail POSSIBLE in model class only
+  const hailClass = maxCode >= 96 || code === 96 || code === 99
+  const stormClass = maxCode >= 95 || code >= 95
+  if ((maxRain > 100 && maxPop > 70) || (hailClass && maxRain > 40) || maxCode >= 99) {
     alerts.push({
       id: `${city.id}-red-${Date.now()}`,
       severity: 'red',
-      title: 'Extremely Heavy Rain / Thunderstorm Watch',
-      title_hi: 'अत्यधिक भारी वर्षा / तूफान वॉच',
-      summary: `Very heavy rainfall and thunderstorm risk over ${city.name} in the next 5 days.`,
-      summary_hi: `${city.name_hi || city.name} में अगले 5 दिनों में अत्यधिक भारी वर्षा व तूफान का खतरा।`,
+      title: hailClass ? 'Severe Thunderstorm Watch · hail possible (model)' : 'Extremely Heavy Rain / Thunderstorm Watch',
+      title_hi: hailClass ? 'गंभीर तूफान वॉच · ओले संभव (मॉडल)' : 'अत्यधिक भारी वर्षा / तूफान वॉच',
+      summary: hailClass
+        ? `Model storm/hail-class signal near ${city.name} — not a confirmed hail report. Official IMD warnings take priority.`
+        : `Very heavy rainfall and thunderstorm risk over ${city.name} in the next 5 days (model thresholds).`,
+      summary_hi: hailClass
+        ? `${city.name_hi || city.name} के पास मॉडल तूफान/ओला-वर्ग संकेत — पुष्ट ओला रिपोर्ट नहीं। आधिकारिक IMD प्राथमिक।`
+        : `${city.name_hi || city.name} में अगले 5 दिनों में अत्यधिक भारी वर्षा व तूफान का मॉडल जोखिम।`,
       time: 'Updated just now',
       time_hi: 'अभी अपडेट',
-      officialText: `IMD-style RED WARNING (modelled): Extremely heavy rainfall / severe thunderstorm very likely at isolated places over ${city.name} (${city.state || ''}). Avoid waterlogged areas. Farmers: postpone harvesting, ensure drainage.`,
-      officialText_hi: `IMD-शैली RED चेतावनी: ${city.name_hi || city.name} में अत्यधिक भारी वर्षा/गंभीर तूफान की संभावना। जलभराव से बचें।`,
-      meansForYou: 'Avoid low-lying roads. Charge devices. Move livestock to shelter. Delay pesticide spray.',
-      meansForYou_hi: 'निचले इलाकों से बचें। डिवाइस चार्ज रखें। मवेशी सुरक्षित रखें। छिड़काव टालें।',
+      modelled: true,
+      source: 'open-meteo-wmo-threshold',
+      officialText: `MODELLED (not official IMD): Elevated storm risk over ${city.name} (${city.state || ''}). WMO hail-class means hail possible — not guaranteed. Avoid waterlogged areas. Farmers: ensure drainage; delay spray if rain imminent.`,
+      officialText_hi: `मॉडल्ड (आधिकारिक IMD नहीं): ${city.name_hi || city.name} में उन्नत तूफान जोखिम। ओला-वर्ग = संभव, गारंटी नहीं।`,
+      meansForYou: 'Avoid low-lying roads. Charge devices. Move livestock to shelter. Conditional: delay foliar spray if rain is likely — check product label.',
+      meansForYou_hi: 'निचले इलाकों से बचें। डिवाइस चार्ज रखें। मवेशी सुरक्षित रखें। बारिश संभावना पर पर्णीय छिड़काव टालें — लेबल देखें।',
     })
-  } else if (maxRain > 50 || maxPop >= 80 || maxWind > 45) {
+  } else if (maxRain > 50 || maxPop >= 80 || maxWind > 45 || (stormClass && maxRain > 20)) {
     alerts.push({
       id: `${city.id}-amber-${Date.now()}`,
       severity: 'amber',
@@ -296,6 +280,7 @@ function parseWeather(city, raw, liveMeta = {}) {
       rain: rainMm,
       pop: dayPopFrom(rawPop, rainMm, dCode, dayHourlyPops),
       popRaw: Math.round(Number(rawPop) || 0),
+      intensity: rainIntensityFromMm(rainMm, 24),
       wind: Math.round(daily.wind_speed_10m_max?.[i] || 0),
       uv: daily.uv_index_max?.[i] ?? null,
       code: dCode,
@@ -435,7 +420,7 @@ function parseWeather(city, raw, liveMeta = {}) {
   const sunrise = daily.sunrise?.[0]
   const sunset = daily.sunset?.[0]
 
-  return {
+  const pack = {
     city,
     fetchedAt: Date.now(),
     timezone: tzName,
@@ -479,16 +464,36 @@ function parseWeather(city, raw, liveMeta = {}) {
     alerts: mergedAlerts,
     sources: [
       {
-        name: liveMeta.source === 'proxy' ? 'Open-Meteo (via secure proxy)' : 'Open-Meteo',
-        role: 'Live forecast model',
-        url: 'https://open-meteo.com',
+        name: liveMeta.source === 'proxy' ? 'Open-Meteo Forecast API (via proxy)' : 'Open-Meteo Forecast API',
+        role: 'Primary NWP grid forecast (temp/wind/precip/WMO codes) — not a personal station',
+        url: 'https://open-meteo.com/en/docs',
       },
-      { name: 'GDACS', role: 'Live multi-hazard events near India', url: 'https://www.gdacs.org' },
-      { name: 'Open-Meteo Flood', role: 'River discharge / flood signal', url: 'https://open-meteo.com/en/docs/flood-api' },
-      { name: 'IMD colour philosophy', role: 'Yellow/Amber/Red framing (official API needs key)', url: 'https://mausam.imd.gov.in' },
-      { name: 'WeatherGPT AI', role: 'Prediction + travel/school/farm layer', url: null },
+      {
+        name: 'Model / feed',
+        role: String(liveMeta.model || raw.model || liveMeta.source || raw._source || 'open-meteo best_match / multi-model'),
+        url: 'https://open-meteo.com/en/docs',
+      },
+      { name: 'GDACS', role: 'Multi-hazard events near region (when proxy attaches)', url: 'https://www.gdacs.org' },
+      { name: 'Open-Meteo Flood API', role: 'River discharge signal (when enabled)', url: 'https://open-meteo.com/en/docs/flood-api' },
+      {
+        name: 'IMD',
+        role: 'Official Indian warnings are NOT auto-ingested here — colour labels follow IMD-style UX only',
+        url: 'https://mausam.imd.gov.in',
+      },
+      {
+        name: 'WeatherGPT rules + AI',
+        role: 'Explains locked weather JSON; must not invent numbers',
+        url: null,
+      },
     ],
+    model: liveMeta.model || raw.model || liveMeta.source || raw._source || 'open-meteo',
   }
+  try {
+    pack.facts = buildLockedWeatherFacts(pack)
+  } catch (e) {
+    pack.facts = null
+  }
+  return pack
 }
 
 /** Prefer external live alerts, then model; de-dupe by severity+category */
@@ -570,7 +575,7 @@ function offlinePack(city) {
     },
     { weather_code: code }
   )
-  return {
+  const pack = {
     city,
     fetchedAt: Date.now(),
     timezone: city.tz || 'Asia/Kolkata',
@@ -613,6 +618,12 @@ function offlinePack(city) {
       { name: 'IMD thresholds', role: 'Alert colour categories', url: 'https://mausam.imd.gov.in' },
     ],
   }
+  try {
+    pack.facts = buildLockedWeatherFacts(pack)
+  } catch {
+    pack.facts = null
+  }
+  return pack
 }
 
 const cache = new Map()
@@ -631,7 +642,7 @@ function openMeteoDirectUrl(lat, lon, tz = 'auto') {
   )
 }
 
-async function fetchJson(url, timeoutMs = 12000) {
+async function fetchJson(url, timeoutMs = 8000) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
@@ -668,42 +679,59 @@ function isForecastPayload(data) {
 async function fetchLiveRaw(city) {
   const lat = city.lat
   const lon = city.lon
-  const tz = city.countryCode && city.countryCode !== 'IN' ? 'auto' : 'Asia/Kolkata'
+  // World cities: always auto TZ (Dubai/Tokyo/…). India curated: Kolkata default.
+  const tz =
+    city.tz ||
+    (city.countryCode && city.countryCode !== 'IN' ? 'auto' : 'Asia/Kolkata')
   const name = encodeURIComponent(city.name || 'Area')
   const errors = []
 
-  // 1) Same-origin Vercel proxy (LIVE weather + live_alerts bundle)
-  try {
-    const proxyUrl =
-      `/api/weather?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}&name=${name}`
-    const data = await fetchJson(proxyUrl, 16000)
-    if (isForecastPayload(data)) {
-      return { data, source: data._proxy ? 'proxy' : 'proxy-ok' }
+  /**
+   * FAST PATH: race direct Open-Meteo vs short proxy.
+   * Old order waited up to 16s on a slow/hanging /api/weather before Dubai painted.
+   */
+  const directUrl = openMeteoDirectUrl(lat, lon, tz === 'auto' ? 'auto' : tz)
+  const proxyUrl =
+    `/api/weather?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}&name=${name}`
+
+  // First successful response wins (direct usually ~200–600ms; proxy can hang)
+  const race = await new Promise((resolve) => {
+    let pending = 2
+    let done = false
+    const fail = () => {
+      pending -= 1
+      if (pending <= 0 && !done) resolve(null)
     }
-    errors.push('proxy: empty/invalid')
-  } catch (e) {
-    errors.push('proxy: ' + e.message)
-  }
+    const win = (v) => {
+      if (done) return
+      done = true
+      resolve(v)
+    }
+    fetchJson(directUrl, 5500)
+      .then((data) => {
+        if (isForecastPayload(data)) win({ data, source: 'open-meteo-direct' })
+        else fail()
+      })
+      .catch(fail)
+    fetchJson(proxyUrl, 4500)
+      .then((data) => {
+        if (isForecastPayload(data)) win({ data, source: data._proxy ? 'proxy' : 'proxy-ok' })
+        else fail()
+      })
+      .catch(fail)
+  })
 
-  // 2) Direct Open-Meteo full schema
-  try {
-    const data = await fetchJson(openMeteoDirectUrl(lat, lon, tz), 14000)
-    if (isForecastPayload(data)) return { data, source: 'open-meteo-direct' }
-    errors.push('direct: empty')
-  } catch (e) {
-    errors.push('direct: ' + e.message)
-  }
+  if (race) return race
 
-  // 3) Direct retry auto TZ
+  // Fallback chain (only if race failed)
   try {
-    await new Promise((r) => setTimeout(r, 400))
-    const data = await fetchJson(openMeteoDirectUrl(lat, lon, 'auto'), 16000)
+    const data = await fetchJson(openMeteoDirectUrl(lat, lon, 'auto'), 7000)
     if (isForecastPayload(data)) return { data, source: 'open-meteo-retry' }
+    errors.push('retry: empty')
   } catch (e) {
     errors.push('retry: ' + e.message)
   }
 
-  // 4) Simplified schema
   try {
     const simple =
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
@@ -711,14 +739,22 @@ async function fetchLiveRaw(city) {
       `&hourly=temperature_2m,precipitation_probability,weathercode,precipitation` +
       `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset` +
       `&timezone=auto&forecast_days=7`
-    const data = await fetchJson(simple, 14000)
+    const data = await fetchJson(simple, 6000)
     if (isForecastPayload(data)) return { data, source: 'open-meteo-simple' }
   } catch (e) {
     errors.push('simple: ' + e.message)
   }
 
-  // 5) Last resort: Open-Meteo via CORS-friendly allapis style is N/A —
-  // try httpbin no — throw
+  // Last: longer proxy (alerts bundle) if pure forecast failed
+  try {
+    const data = await fetchJson(proxyUrl, 8000)
+    if (isForecastPayload(data)) {
+      return { data, source: data._proxy ? 'proxy-late' : 'proxy-ok-late' }
+    }
+  } catch (e) {
+    errors.push('proxy-late: ' + e.message)
+  }
+
   const err = new Error('All live sources failed: ' + errors.join(' | '))
   err.details = errors
   throw err
@@ -742,15 +778,15 @@ export async function fetchWeather(cityOrId, { force = false } = {}) {
     if (Date.now() - hit.fetchedAt < ttl) return hit
   }
 
-  // Low-bandwidth: serve fresh-enough IDB cache before network
-  if (!force && slow) {
+  // Instant paint: serve fresh-enough IDB cache first, refresh live in background
+  if (!force) {
     try {
-      const disk = await dbGetWeather(key, IDB_MAX_AGE)
+      const disk = await dbGetWeather(key, slow ? IDB_MAX_AGE : 30 * 60 * 1000)
       if (disk?.current) {
-        cache.set(key, { ...disk, live: !!disk.live && !disk.stale })
-        // background refresh (don't block UI)
+        const pack = { ...disk, live: !!disk.live && !disk.stale }
+        cache.set(key, pack)
         refreshLiveInBackground(city, key)
-        return cache.get(key)
+        return pack
       }
     } catch {
       /* continue live */
@@ -800,7 +836,7 @@ function refreshLiveInBackground(city, key) {
         dbPutWeather(key, parsed).catch(() => {})
       })
       .catch(() => {})
-  }, 1200)
+  }, 400)
 }
 
 export function injectSimulatedAlert(weather, cityOverride) {

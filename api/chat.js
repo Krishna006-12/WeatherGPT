@@ -620,14 +620,54 @@ async function callGemini(model, system, user, apiKey, timeoutMs = 12000) {
 /** Slim tool pack for Gemini — fewer tokens in, fuller answer out */
 function compactWeather(wx) {
   if (!wx || typeof wx !== 'object') return wx
-  const daily = Array.isArray(wx.daily) ? wx.daily.slice(0, 5) : wx.daily
+  const dailyIn = Array.isArray(wx.daily) ? wx.daily.slice(0, 7) : []
+  const daily = dailyIn.map((d) => ({
+    date: d.date,
+    max_c: d.max_c ?? d.temp_max_c ?? d.max,
+    min_c: d.min_c ?? d.temp_min_c ?? d.min,
+    // separate rain fields
+    rain_probability_pct: d.pop_pct ?? d.rain_probability_pct ?? d.pop,
+    rain_amount_mm: d.rain_mm ?? d.rain_amount_mm ?? d.rain,
+    rain_intensity: d.rain_intensity ?? d.intensity?.id ?? null,
+    wmo_code: d.weather_code ?? d.wmo_code ?? d.code,
+    condition: d.condition_en || d.condition,
+    hail_possible: d.hail_possible || d.wmo_code === 96 || d.wmo_code === 99 || d.code === 96 || d.code === 99,
+  }))
+  const c = wx.current || {}
   return {
-    place: wx.place,
+    schema: 'weathergpt.facts.v1',
+    locked: true,
+    place: wx.place || wx.name,
     lat: wx.lat,
     lon: wx.lon,
-    current: wx.current,
+    timezone: wx.timezone || null,
+    fetched_at: wx.fetched_at || wx.fetchedAt || null,
+    model: wx.model || wx.source || 'open-meteo',
+    current: {
+      temp_c: c.temp_c ?? c.temp,
+      feels_c: c.feels_c ?? c.feelsLike,
+      humidity_pct: c.humidity_pct ?? c.humidity,
+      wind_kmh: c.wind_kmh ?? c.wind,
+      precip_mm: c.precip_mm ?? c.precip,
+      weather_code: c.weather_code ?? c.code,
+      condition: c.condition,
+      hail_possible: c.hail_possible || c.weather_code === 96 || c.weather_code === 99,
+    },
+    rain: daily[0]
+      ? {
+          today_probability_pct: daily[0].rain_probability_pct,
+          today_amount_mm: daily[0].rain_amount_mm,
+          today_intensity: daily[0].rain_intensity,
+          fields_separated: true,
+        }
+      : null,
     daily,
-    source: wx.source || 'Open-Meteo',
+    source: wx.source || 'Open-Meteo Forecast API',
+    limitations: [
+      'Grid model — not a personal weather station',
+      'Not official IMD warning feed unless marked',
+      'WMO hail-class = possible, not confirmed hail',
+    ],
   }
 }
 
@@ -860,9 +900,14 @@ async function llmPhrase(wx, message, lang, extra = {}) {
     'You are WeatherGPT — a sharp weather + farm copilot for India. Quality bar = ChatGPT: natural, specific, useful. ' +
     'NEVER sound like a generic textbook or government pamphlet. ' +
     'GROUNDING RULES (hard):\n' +
-    '1) Every temperature, humidity, wind, rain mm, and rain-% MUST come from the LIVE snapshot / tool JSON.\n' +
-    '2) Do not invent numbers. If missing, say unavailable.\n' +
-    '3) Do not claim definite yield loss/gain or disease diagnosis.\n' +
+    '1) Every temperature, humidity, wind, rain mm, and rain-% MUST come from LOCKED_WEATHER_FACTS / tool JSON — copy digits exactly.\n' +
+    '2) Do not invent or recalculate numbers. If missing, say unavailable. Hindi/Hinglish = translate SAME numbers, never new maths.\n' +
+    '3) Rain probability_pct, amount_mm, and intensity are SEPARATE — never conflate % with mm or intensity labels.\n' +
+    '4) WMO 95 = thunderstorm WITHOUT implied hail. WMO 96/99 = hail POSSIBLE in model class — never guarantee hail is falling.\n' +
+    '5) Do not claim definite yield loss/gain or disease diagnosis; at most "conditions may favour…".\n' +
+    '6) Do not ban all fertilizer/pesticides; use conditional spray language and say check local label.\n' +
+    '7) If crop is off-season (e.g. wheat in August in N. India rabi calendar), flag season mismatch first.\n' +
+    '8) City rankings only if every city has complete data; else say comparison unavailable.\n' +
     'ANSWER SHAPE (always):\n' +
     '• First sentence = direct answer to the user (e.g. irrigation: YES / NO / WAIT — with reason tied to LIVE rain/heat).\n' +
     '• Then 2 short sections max: (1) What the weather is doing now (with numbers) (2) What you should do in next 24-48h.\n' +
@@ -880,12 +925,23 @@ async function llmPhrase(wx, message, lang, extra = {}) {
       ? 'Language: natural Hinglish (simple Roman Hindi + English), friendly — jaise kisi smart dost/advisor se baat ho.'
       : 'Language: clear natural English.')
 
+  const locked = (() => {
+    try {
+      const pack = compactWeather(wx)
+      pack.locked = true
+      pack.note =
+        'Numbers are frozen for this answer. Do not change them when translating language.'
+      return pack
+    } catch {
+      return compactWeather(wx)
+    }
+  })()
   const user =
     `User asked:\n${message}\n\n` +
     (crop ? `Crop: ${crop}\n` : '') +
     `${snap}\n\n` +
-    `Full tool JSON:\n${JSON.stringify(compactWeather(wx)).slice(0, 3000)}\n\n` +
-    `Write the ChatGPT-quality grounded answer now. Lead with the decision/action.`
+    `LOCKED_WEATHER_FACTS (authoritative — copy numbers exactly):\n${JSON.stringify(locked).slice(0, 3500)}\n\n` +
+    `Write the grounded answer now. Lead with the decision/action. Same numbers in Hindi if needed.`
 
   const r = await aiProviderManager(system, user, 'llm_grounded')
   let text = r.text

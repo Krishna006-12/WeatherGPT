@@ -1,5 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CloudSun,
   MessageCircle,
@@ -20,18 +19,41 @@ import {
   Activity,
 } from 'lucide-react'
 import { CITIES, CITY_LIST, getCity, registerCity } from './data/cities'
+import { detectCrop, isCropQuestion } from './data/crops'
 import { tr } from './data/i18n'
 import { fetchWeather, injectSimulatedAlert, clearCache } from './services/weather'
-import {
-  chat,
-  welcomeMessage,
-  resolveMentionedCity,
-  isCropQuestion,
-  detectCrop,
-  classifyUserQuery,
-  isCropRoute,
-  isCropOnlyClassification,
-} from './services/ai'
+// AI module is large — load on demand (chat / crop), not on first paint
+let _aiMod = null
+function loadAi() {
+  if (!_aiMod) _aiMod = import('./services/ai')
+  return _aiMod
+}
+function welcomeMessageSafe(wx, lang) {
+  const name = (lang === 'hi' ? wx?.city?.name_hi : null) || wx?.city?.name || 'WeatherGPT'
+  const t = wx?.current?.temp
+  const cond = (lang === 'hi' ? wx?.current?.condition_hi : null) || wx?.current?.condition || ''
+  const pop = wx?.daily?.[0]?.pop
+  if (lang === 'hi') {
+    return {
+      text:
+        `## नमस्ते — ${name}\n\n` +
+        `### अभी\n**${t ?? '—'}°C**${cond ? `, ${cond}` : ''}` +
+        (pop != null ? ` · बारिश ~${pop}%` : '') +
+        `\n\nChat में कुछ भी पूछें — बारिश, सिंचाई, यात्रा।`,
+      type: 'general',
+      confidence: 0.92,
+    }
+  }
+  return {
+    text:
+      `## Hello — ${name}\n\n` +
+      `### Right now\n**${t ?? '—'}°C**${cond ? `, ${cond}` : ''}` +
+      (pop != null ? ` · rain ~${pop}%` : '') +
+      `\n\nAsk chat anything — rain, irrigation, travel.`,
+    type: 'general',
+    confidence: 0.92,
+  }
+}
 import { fetchAQI } from './services/aqi'
 import {
   loadPrefs,
@@ -229,6 +251,7 @@ export default function App() {
   const [recentCities, setRecentCities] = useState(() => loadRecent())
   const [showOnboard, setShowOnboard] = useState(() => !loadOnboarded())
   const [toast, setToast] = useState(null)
+  const cityLoadGen = useRef(0)
 
   const city = cityObj || getCity(cityId) || CITIES.kanpur
   const units = prefs.units || 'C'
@@ -305,39 +328,87 @@ export default function App() {
           ? registerCity(idOrCity)
           : getCity(idOrCity) || CITIES[idOrCity] || CITIES.kanpur
 
-      setLoadingWx(true)
+      const gen = ++cityLoadGen.current
+      const stillMine = () => cityLoadGen.current === gen
+
+      // Instant chrome switch — header / shell show Dubai immediately
       setCityId(resolved.id)
       setCityObj(resolved)
       pushRecent(resolved)
+      setTab('home')
+
+      // Memory hit → paint weather now, soft-refresh in background
+      const cached = !force ? weatherMap[resolved.id] : null
+      if (cached?.current) {
+        setWeather(cached)
+        setLoadingWx(false)
+        loadAqi(resolved)
+        if (resetChat) {
+          const hist = loadChatHistory(resolved.id)
+          setMessages(
+            hist?.length
+              ? hist
+              : [
+                  {
+                    id: Date.now(),
+                    role: 'assistant',
+                    ...welcomeMessageSafe(cached, lang),
+                    timestamp: Date.now(),
+                  },
+                ],
+          )
+        }
+        fetchWeather(resolved, { force: false })
+          .then((wx) => {
+            if (!stillMine()) return
+            setWeather(wx)
+            setWeatherMap((m) => ({ ...m, [resolved.id]: wx }))
+          })
+          .catch(() => {})
+        return
+      }
+
+      // No cache: drop OLD city weather so UI doesn't stay on Kanpur while Dubai loads
+      setWeather(null)
+      setAqi(null)
+      setLoadingWx(true)
+      if (resetChat) setMessages([])
+
       try {
         if (force) clearCache(resolved.id)
         const wx = await fetchWeather(resolved, { force })
+        if (!stillMine()) return
         setWeather(wx)
         setWeatherMap((m) => ({ ...m, [resolved.id]: wx }))
         loadAqi(resolved)
-
         if (resetChat) {
           const hist = loadChatHistory(resolved.id)
-          if (hist?.length) {
-            setMessages(hist)
-          } else {
-            setMessages([
-              { id: Date.now(), role: 'assistant', ...welcomeMessage(wx, lang), timestamp: Date.now() },
-            ])
-          }
+          setMessages(
+            hist?.length
+              ? hist
+              : [
+                  {
+                    id: Date.now(),
+                    role: 'assistant',
+                    ...welcomeMessageSafe(wx, lang),
+                    timestamp: Date.now(),
+                  },
+                ],
+          )
         }
       } catch {
+        if (!stillMine()) return
         showToast(
           lang === 'hi'
             ? 'मौसम लोड नहीं हुआ — नेटवर्क जाँचें या दोबारा कोशिश करें'
             : 'Could not load weather — check network and try again',
-          'err'
+          'err',
         )
       } finally {
-        setLoadingWx(false)
+        if (stillMine()) setLoadingWx(false)
       }
     },
-    [lang, pushRecent, loadAqi, showToast]
+    [lang, pushRecent, loadAqi, showToast, weatherMap],
   )
 
   const refreshLive = useCallback(async () => {
@@ -371,21 +442,30 @@ export default function App() {
       setWeather(wx)
       setWeatherMap({ [home.id]: wx })
       const hist = loadChatHistory(home.id)
-      setMessages(
-        hist?.length
-          ? hist
-          : [{ id: Date.now(), role: 'assistant', ...welcomeMessage(wx, lang), timestamp: Date.now() }]
-      )
+      if (hist?.length) {
+        setMessages(hist)
+      } else {
+        const welcome = welcomeMessageSafe(wx, lang)
+        setMessages([{ id: Date.now(), role: 'assistant', ...welcome, timestamp: Date.now() }])
+      }
       setLoadingWx(false)
       pushRecent(home)
       loadAqi(home)
 
-      for (const id of ['lucknow', 'delhi', 'mumbai', 'varanasi']) {
-        if (id === home.id) continue
-        fetchWeather(id).then((w) => {
-          if (!cancelled) setWeatherMap((m) => ({ ...m, [id]: w }))
-        })
-      }
+      // Defer multi-city prefetch — was 4 extra Open-Meteo calls on every cold start
+      // Prefetch only after first paint + idle (Cities tab benefits later)
+      const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 2500))
+      idle(() => {
+        if (cancelled) return
+        for (const id of ['lucknow', 'delhi', 'dubai']) {
+          if (id === home.id) continue
+          fetchWeather(id)
+            .then((w) => {
+              if (!cancelled) setWeatherMap((m) => ({ ...m, [id]: w }))
+            })
+            .catch(() => {})
+        }
+      })
     })()
     return () => {
       cancelled = true
@@ -407,7 +487,7 @@ export default function App() {
 
   useEffect(() => {
     if (weather && messages.length === 1 && messages[0].role === 'assistant') {
-      setMessages([{ id: Date.now(), role: 'assistant', ...welcomeMessage(weather, lang), timestamp: Date.now() }])
+      setMessages([{ id: Date.now(), role: 'assistant', ...welcomeMessageSafe(weather, lang), timestamp: Date.now() }])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang])
@@ -422,16 +502,19 @@ export default function App() {
     setTab('more')
   }
 
-  const onSelectCity = async (idOrCity) => {
+  const onSelectCity = (idOrCity) => {
     const resolved =
-      typeof idOrCity === 'object' && idOrCity?.lat ? idOrCity : getCity(idOrCity) || CITIES[idOrCity]
+      typeof idOrCity === 'object' && idOrCity?.lat
+        ? idOrCity
+        : getCity(idOrCity) || CITIES[idOrCity]
     if (!resolved) return
     if (resolved.id === cityId && weather) {
       setTab('home')
       return
     }
+    // Fire-and-forget: UI switches immediately inside loadCity (no await blocking pick)
     setTab('home')
-    await loadCity(resolved, { resetChat: true })
+    loadCity(resolved, { resetChat: true })
   }
 
   const fetchWeatherFor = useCallback(
@@ -481,6 +564,15 @@ export default function App() {
     setChatLoading(true)
 
     try {
+      // Load AI engine only when user actually chats (keeps home paint fast)
+      const ai = await loadAi()
+      const {
+        chat,
+        resolveMentionedCity,
+        classifyUserQuery,
+        isCropRoute,
+      } = ai
+
       /** Timed POST to /api/chat — never hang forever on Vercel 504 */
       const postChatApi = async (payload, ms = 22000) => {
         const ac = new AbortController()
@@ -1440,10 +1532,9 @@ export default function App() {
                     }`}
                   >
                     {active && (
-                      <motion.span
-                        layoutId="nav-pill"
+                      <span
                         className="absolute inset-x-3 inset-y-1 rounded-2xl nav-pill-liquid"
-                        transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.7 }}
+                        aria-hidden
                       />
                     )}
                     <span className="relative z-[1]">
@@ -1486,7 +1577,7 @@ export default function App() {
                 type="button"
                 onClick={() => setShowAbout(false)}
                 className="p-1 rounded-lg hover:bg-white/10 focus-ring text-white/70"
-              >
+npx               >
                 <X className="w-4 h-4" />
               </button>
             </div>
