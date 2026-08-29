@@ -1,0 +1,61 @@
+/* WeatherGPT Premium Motion v1 — presentation only */
+
+:root{--pm-ease:cubic-bezier(.16,1,.3,1);--pm-spring:cubic-bezier(.22,1,.36,1)}
+
+/* Global fluid interaction */
+button,a,[role="button"]{transition:transform .42s var(--pm-spring),opacity .28s ease,filter .42s var(--pm-spring),background .35s ease,box-shadow .42s var(--pm-spring),border-color .35s ease!important}
+button:active,[role="button"]:active{transform:scale(.965)!important}
+
+/* Make the dashboard visibly feel layered */
+.pg-card,.dash-glass,.hero-soft,.sheet-dark{position:relative;overflow:hidden;isolation:isolate}
+.pg-card::after,.dash-glass::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:-1;background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.055) 48%,transparent 72%);transform:translateX(-120%);transition:transform 1.15s var(--pm-ease)}
+.pg-card:hover::after,.dash-glass:hover::after{transform:translateX(120%)}
+
+/* Hero cinematic entrance */
+.dash-hero{animation:pm-hero-in .95s var(--pm-ease) both;will-change:transform,opacity}
+.dash-hero-bg{animation:pm-sky-breathe 12s ease-in-out infinite alternate!important;will-change:transform}
+.pg-hero-content{animation:pm-content-in .8s var(--pm-ease) both}
+.pg-hero-temp{animation:pm-temp-in 1s var(--pm-ease) .08s both!important}
+
+/* Atmospheric weather motion */
+.hero-clouds{animation:pm-cloud-layer 18s ease-in-out infinite alternate!important;will-change:transform}
+.hero-clouds .cloud{animation:pm-cloud 14s ease-in-out infinite alternate!important;will-change:transform}
+.hero-clouds .c2{animation-duration:19s!important;animation-delay:-5s!important}
+.hero-clouds .c3{animation-duration:23s!important;animation-delay:-10s!important}
+.hero-clouds .c4{animation-duration:17s!important;animation-delay:-3s!important}
+.sun-glow{animation:pm-sun 5s ease-in-out infinite alternate!important;will-change:transform,opacity}
+.ambient-rays{animation:pm-rays 8s ease-in-out infinite alternate!important}
+.hero-sparkles i{animation:pm-sparkle 4s var(--pm-spring) infinite!important}
+.hero-sparkles i:nth-child(2){animation-delay:-1s!important}.hero-sparkles i:nth-child(3){animation-delay:-2s!important}.hero-sparkles i:nth-child(4){animation-delay:-3s!important}
+.ambient-rain span{animation-timing-function:linear!important}
+
+/* Premium card cascade */
+.pg-card{animation:pm-card-in .72s var(--pm-ease) both}
+.pg-card:nth-child(2){animation-delay:.05s}.pg-card:nth-child(3){animation-delay:.10s}.pg-card:nth-child(4){animation-delay:.15s}.pg-card:nth-child(5){animation-delay:.20s}.pg-card:nth-child(6){animation-delay:.25s}
+.pg-card:hover{transform:translateY(-5px) scale(1.008)!important;box-shadow:0 26px 65px rgba(0,7,22,.34)!important}
+
+/* Metrics get a soft, fluid lift */
+.pg-metric{transition:transform .48s var(--pm-spring),background .35s ease,border-color .35s ease,box-shadow .48s var(--pm-spring)!important}
+.pg-metric:hover{transform:translateY(-6px) scale(1.018)!important;box-shadow:0 18px 42px rgba(0,8,25,.28)!important}
+.pg-metric-icon{transition:transform .48s var(--pm-spring)!important}.pg-metric:hover .pg-metric-icon{transform:scale(1.12) rotate(-5deg)!important}
+
+/* Forecast feels like a native premium carousel */
+.hour-chip,.day-chip{will-change:transform}.hour-chip:hover,.day-chip:hover{transform:translateY(-5px) scale(1.025)!important}.hour-chip-active,.day-chip-active{transform:translateY(-3px) scale(1.02)!important}
+.pg-day-row:hover{transform:translateX(6px)!important}
+
+/* Nav micro-interactions */
+.nav-pill-liquid:hover{transform:translateY(-2px) scale(1.025)!important}
+
+@keyframes pm-hero-in{from{opacity:0;transform:translateY(18px) scale(.985);filter:blur(5px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes pm-content-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes pm-temp-in{from{opacity:0;transform:translateY(26px) scale(.94);filter:blur(8px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes pm-sky-breathe{from{transform:scale(1.07)}to{transform:scale(1.115) translate3d(.4%,-.3%,0)}}
+@keyframes pm-cloud-layer{from{transform:translate3d(-.5%,0,0)}to{transform:translate3d(.8%,-.5%,0)}}
+@keyframes pm-cloud{from{transform:translate3d(-14px,2px,0) scale(1)}to{transform:translate3d(18px,-8px,0) scale(1.035)}}
+@keyframes pm-sun{from{transform:scale(.94);opacity:.60}to{transform:scale(1.10);opacity:.96}}
+@keyframes pm-rays{from{transform:scale(.94) rotate(-1deg);opacity:.42}to{transform:scale(1.07) rotate(2deg);opacity:.80}}
+@keyframes pm-sparkle{0%,100%{transform:translate3d(0,0,0) scale(.75);opacity:.12}50%{transform:translate3d(0,-9px,0) scale(1.18);opacity:.78}}
+@keyframes pm-card-in{from{opacity:0;transform:translate3d(0,20px,0) scale(.985)}to{opacity:1;transform:none}}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
+@media (max-width:767px){.pg-card:hover{transform:translateY(-2px) scale(1.003)!important}.dash-hero{animation-duration:.7s}}
