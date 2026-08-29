@@ -1497,6 +1497,51 @@ body {
   }
 }
 
+/* iOS-inspired mobile dock: a floating, tactile control surface rather than a flat footer. */
+@media (max-width: 1023px) {
+  .nav-glass {
+    margin: 0.45rem 0.65rem max(0.55rem, env(safe-area-inset-bottom));
+    padding: 0.3rem !important;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 24px;
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.035)),
+      rgba(6, 18, 38, 0.76);
+    box-shadow:
+      0 14px 34px rgba(0, 8, 28, 0.38),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  }
+
+  .nav-glass button {
+    min-height: 52px;
+    transition: color 0.22s ease, transform 0.3s var(--ease-out);
+  }
+
+  .nav-glass button:active {
+    transform: scale(0.92);
+  }
+
+  .nav-pill-liquid {
+    background:
+      radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.2), transparent 70%),
+      linear-gradient(160deg, rgba(112, 190, 255, 0.38), rgba(43, 107, 203, 0.3));
+    border-color: rgba(180, 225, 255, 0.28);
+    box-shadow:
+      0 7px 18px rgba(16, 106, 215, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  }
+
+  .pg-card {
+    border-radius: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-glass button {
+    transition: none;
+  }
+}
+
 /* Desktop shell — matte frosted tablet chrome (reference) */
 @media (min-width: 1024px) {
   .app-shell {
