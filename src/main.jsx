@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './ui-redesign.css'
+import './ui-premium-motion.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
@@ -28,7 +29,7 @@ if (!rootEl) {
 
   if (wantPreview) {
     import('./components/DevicePreview.jsx')
-      .then((m) => mount(m.default))
+      .then(({ default: DevicePreview }) => mount(DevicePreview))
       .catch(() => mount(App))
   } else {
     mount(App)
