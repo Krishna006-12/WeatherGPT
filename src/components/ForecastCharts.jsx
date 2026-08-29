@@ -29,7 +29,7 @@ export function Hourly({ hourData, lang }) {
             <stop offset="100%" stopColor="#5eb0ff" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
+        <CartesianGrid strokeDasharray="2 5" stroke="rgba(255,255,255,0.06)" vertical={false} />
         <XAxis
           dataKey="label"
           tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }}
@@ -62,8 +62,18 @@ export function Hourly({ hourData, lang }) {
 export function Daily({ dayData, lang }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={dayData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
+      <BarChart data={dayData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }} barGap={4}>
+        <defs>
+          <linearGradient id="fcBarMax" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#7ac0ff" stopOpacity={1} />
+            <stop offset="100%" stopColor="#4a86dc" stopOpacity={0.85} />
+          </linearGradient>
+          <linearGradient id="fcBarMin" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(142,200,255,0.5)" stopOpacity={1} />
+            <stop offset="100%" stopColor="rgba(142,200,255,0.18)" stopOpacity={1} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="2 5" stroke="rgba(255,255,255,0.06)" vertical={false} />
         <XAxis
           dataKey="name"
           tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }}
@@ -76,18 +86,18 @@ export function Daily({ dayData, lang }) {
           tickLine={false}
           width={28}
         />
-        <Tooltip contentStyle={tipDark} />
+        <Tooltip contentStyle={tipDark} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
         <Bar
           dataKey="max"
-          fill="#5eb0ff"
-          radius={[4, 4, 0, 0]}
+          fill="url(#fcBarMax)"
+          radius={[6, 6, 2, 2]}
           name={lang === 'hi' ? 'उच्च' : 'High'}
           isAnimationActive={false}
         />
         <Bar
           dataKey="min"
-          fill="rgba(142,200,255,0.35)"
-          radius={[4, 4, 0, 0]}
+          fill="url(#fcBarMin)"
+          radius={[6, 6, 2, 2]}
           name={lang === 'hi' ? 'निम्न' : 'Low'}
           isAnimationActive={false}
         />

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
 import DataStatusPill, { DataStatusBanner } from './DataStatusPill'
 import ModelConsensusCard from './ModelConsensusCard'
 import { shouldDeferHeavyUI } from '../services/networkStatus'
@@ -512,12 +513,20 @@ export default function DashboardTab({
               name={c.icon}
               className="wx-hero-icon-fallback w-12 h-12 drop-shadow-lg mb-1 opacity-90"
             />
-            <div className="flex items-start gap-0.5">
-              <span className="pg-hero-temp">{displayTemp}</span>
-              <span className="text-[20px] sm:text-[24px] font-medium text-white/50 mt-2 sm:mt-3">
-                {unit}
-              </span>
-            </div>
+  <div className="flex items-start gap-0.5">
+  <motion.span
+  key={displayTemp}
+  initial={{ opacity: 0, y: 8 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+  className="pg-hero-temp"
+  >
+  {displayTemp}
+  </motion.span>
+  <span className="text-[20px] sm:text-[24px] font-medium text-white/50 mt-2 sm:mt-3">
+  {unit}
+  </span>
+  </div>
             <p className="text-[18px] sm:text-[20px] font-semibold text-white mt-1 leading-tight">
               {cond.primary}
             </p>
