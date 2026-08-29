@@ -52,3 +52,8 @@ OPENAI_API_KEY=          # optional paid
 ## Files
 - `api/chat.js` — full pipeline (server)
 - `src/App.jsx` — UI calls `/api/chat`, brands Groq/OpenRouter/Gemini source lines
+
+
+## Multi-model NWP (2026-08)
+
+See **MULTI-MODEL.md** and `api/_lib/multiModel.js`. Primary forecast remains Open-Meteo best_match on `/api/weather`; multi-model aggregate on `/api/models` (ECMWF IFS · GFS · ICON · AIFS). Frontend must not fan-out model URLs.

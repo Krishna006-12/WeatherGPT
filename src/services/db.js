@@ -65,35 +65,90 @@ function reqToPromise(req) {
   })
 }
 
-/** Slim weather pack before disk write — drop heavy unused fields */
+/**
+ * Slim weather pack before disk write — drop heavy unused fields.
+ * NEVER persists API secrets / keys / auth headers (none exist client-side for OM).
+ * Stores: location, weather, forecast, timestamp, source.
+ */
 export function slimWeatherPack(wx) {
   if (!wx) return null
+  const city = wx.city
+    ? {
+        id: wx.city.id,
+        name: wx.city.name,
+        name_hi: wx.city.name_hi,
+        state: wx.city.state,
+        state_hi: wx.city.state_hi,
+        lat: wx.city.lat,
+        lon: wx.city.lon,
+        tz: wx.city.tz,
+        country: wx.city.country,
+        countryCode: wx.city.countryCode,
+        region: wx.city.region,
+      }
+    : null
   return {
-    city: wx.city,
-    fetchedAt: wx.fetchedAt,
-    live: !!wx.live,
-    liveSource: wx.liveSource,
+    city,
+    location: city
+      ? {
+          id: city.id,
+          name: city.name,
+          lat: city.lat,
+          lon: city.lon,
+          tz: city.tz,
+          countryCode: city.countryCode,
+        }
+      : null,
+    fetchedAt: wx.fetchedAt || Date.now(),
+    // On disk always non-live — UI must re-derive status
+    live: false,
+    stale: true,
+    fromCache: true,
+    offlineCached: true,
+    liveSource: wx.liveSource || wx.source || 'cache',
+    source: wx.liveSource || wx.source || 'open-meteo',
+    timezone: wx.timezone,
     current: wx.current,
-    // keep 24h max for UI scrubber
+    // forecast
     hourly: Array.isArray(wx.hourly) ? wx.hourly.slice(0, 24) : [],
     daily: Array.isArray(wx.daily) ? wx.daily.slice(0, 7) : [],
-    agri: wx.agri,
+    agri: wx.agri
+      ? {
+          soil: wx.agri.soil,
+          recentRain: wx.agri.recentRain,
+          advice_en: wx.agri.advice_en,
+          advice_hi: wx.agri.advice_hi,
+        }
+      : undefined,
     alerts: Array.isArray(wx.alerts) ? wx.alerts.slice(0, 8) : [],
     astro: wx.astro,
     sources: wx.sources,
-    offlineCached: true,
+    // strip multi-model bulk / confidence blobs if huge — keep tiny summary
+    multi_model_mode: wx.multi_model_mode || null,
+    confidence: wx.confidence
+      ? {
+          level: wx.confidence.level,
+          score: wx.confidence.score,
+          engine: wx.confidence.engine,
+        }
+      : null,
   }
 }
 
 export async function dbPutWeather(cityId, pack) {
   const db = await openDb()
   if (!db || !cityId || !pack) return false
+  // Never write demo/synthetic packs over a real observation
+  if (pack.demo || pack.synthetic) return false
   try {
+    const slim = slimWeatherPack(pack)
     const row = {
       cityId,
-      fetchedAt: pack.fetchedAt || Date.now(),
-      live: !!pack.live,
-      pack: slimWeatherPack(pack),
+      fetchedAt: slim.fetchedAt || Date.now(),
+      live: false,
+      source: slim.source || slim.liveSource,
+      location: slim.location,
+      pack: slim,
     }
     const tx = db.transaction(STORE_WX, 'readwrite')
     tx.objectStore(STORE_WX).put(row)
@@ -106,6 +161,11 @@ export async function dbPutWeather(cityId, pack) {
   }
 }
 
+/**
+ * Read last successful weather pack.
+ * @param maxAgeMs — soft TTL: older packs still returned with stale:true (caller decides).
+ *                    Pass 0 to always accept (offline last-resort).
+ */
 export async function dbGetWeather(cityId, maxAgeMs = 6 * 60 * 60 * 1000) {
   const db = await openDb()
   if (!db || !cityId) return null
@@ -113,14 +173,33 @@ export async function dbGetWeather(cityId, maxAgeMs = 6 * 60 * 60 * 1000) {
     const tx = db.transaction(STORE_WX, 'readonly')
     const row = await reqToPromise(tx.objectStore(STORE_WX).get(cityId))
     if (!row?.pack) return null
-    if (maxAgeMs > 0 && Date.now() - (row.fetchedAt || 0) > maxAgeMs) {
-      // still return stale for offline, but mark
-      return { ...row.pack, stale: true, fetchedAt: row.fetchedAt, live: false }
+    const fetchedAt = row.fetchedAt || row.pack.fetchedAt || 0
+    const age = Date.now() - fetchedAt
+    const overSoft = maxAgeMs > 0 && age > maxAgeMs
+    // Always mark disk packs as non-live — never present as Live
+    return {
+      ...row.pack,
+      city: row.pack.city || row.location || row.pack.location,
+      location: row.pack.location || row.location,
+      fetchedAt,
+      live: false,
+      stale: true,
+      fromDb: true,
+      fromCache: true,
+      offlineCached: true,
+      source: row.source || row.pack.source || row.pack.liveSource,
+      liveSource: row.pack.liveSource || row.source || 'IndexedDB',
+      ageMs: age,
+      softExpired: overSoft,
     }
-    return { ...row.pack, stale: false, fromDb: true }
   } catch {
     return null
   }
+}
+
+/** Last pack even if ancient — for complete offline */
+export async function dbGetWeatherAny(cityId) {
+  return dbGetWeather(cityId, 0)
 }
 
 async function trimWeatherStore(keep = 24) {

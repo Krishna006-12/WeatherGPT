@@ -1,4 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import DataStatusPill, { DataStatusBanner } from './DataStatusPill'
+import ModelConsensusCard from './ModelConsensusCard'
+import { shouldDeferHeavyUI } from '../services/networkStatus'
 import {
   Car,
   ChevronDown,
@@ -265,6 +268,10 @@ export default function DashboardTab({
   aqi,
   lang,
   units,
+  minsAgo: minsAgoProp,
+  dataStatus,
+  netSnap,
+  onRefresh,
   onOpenMode,
   onOpenChat,
   onOpenAlerts,
@@ -337,10 +344,12 @@ export default function DashboardTab({
   const displayTemp = hourIdx > 0 && activeHour ? t(activeHour.temp) : t(c.temp)
   const displayPop =
     hourIdx > 0 ? activeHour?.pop ?? d0?.pop ?? 0 : d0?.pop ?? activeHour?.pop ?? 0
-  const chartData = hours.slice(0, 18).map((h, i) => ({
+  const chartData = hours.slice(0, 24).map((h, i) => ({
     label: shortHourLabel(h, i, lang),
     temp: i === 0 ? t(c.temp) : t(h.temp),
     pop: h.pop ?? 0,
+    rain: h.rain ?? h.precipitation ?? 0,
+    wind: h.wind ?? c.wind ?? null,
     i,
   }))
 
@@ -361,8 +370,10 @@ export default function DashboardTab({
   const windMeta = windCompass(c.windDir ?? 0, lang)
   const hourTray = hours.slice(0, isDesktop ? 12 : 14)
   const dayTray = (weather.daily || []).slice(0, 7)
-  const absMin = Math.min(...dayTray.map((d) => d.min))
-  const absMax = Math.max(...dayTray.map((d) => d.max))
+  const dayMins = dayTray.map((d) => d.min).filter((n) => n != null && !Number.isNaN(Number(n)))
+  const dayMaxs = dayTray.map((d) => d.max).filter((n) => n != null && !Number.isNaN(Number(n)))
+  const absMin = dayMins.length ? Math.min(...dayMins) : 0
+  const absMax = dayMaxs.length ? Math.max(...dayMaxs) : 1
 
   const dateLine = (() => {
     try {
@@ -381,7 +392,9 @@ export default function DashboardTab({
     }
   })()
 
+  const coreOnly = !!(netSnap?.coreOnly || shouldDeferHeavyUI(netSnap || {}))
   const minsAgo = (() => {
+    if (minsAgoProp != null && Number.isFinite(Number(minsAgoProp))) return Number(minsAgoProp)
     try {
       const ts = weather.fetchedAt || Date.now()
       return Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000))
@@ -433,18 +446,18 @@ export default function DashboardTab({
       id: 'farm',
       icon: Sprout,
       title: lang === 'hi' ? 'कृषि' : 'Farm',
-      label: lang === 'hi' ? weather.agri.soil.hi : weather.agri.soil.en,
+      label: lang === 'hi' ? (weather?.agri?.soil?.hi || '—') : (weather?.agri?.soil?.en || '—'),
       level:
-        weather.agri.soil.level === 'low'
+        weather?.agri?.soil?.level === 'low'
           ? 'moderate'
-          : weather.agri.soil.level === 'high'
+          : weather?.agri?.soil?.level === 'high'
             ? 'elevated'
             : 'low',
-      advice: lang === 'hi' ? weather.agri.advice_hi : weather.agri.advice_en,
+      advice: lang === 'hi' ? (weather?.agri?.advice_hi || '—') : (weather?.agri?.advice_en || '—'),
       factors: [
         lang === 'hi'
-          ? `हाल बारिश ${weather.agri.recentRain} मिमी`
-          : `Recent rain ${weather.agri.recentRain} mm`,
+          ? `हाल बारिश ${weather?.agri?.recentRain ?? '—'} मिमी`
+          : `Recent rain ${weather?.agri?.recentRain ?? '—'} mm`,
       ],
     },
   ]
@@ -489,18 +502,7 @@ export default function DashboardTab({
             </p>
             <p className="text-[11px] text-white/50 mt-1 pl-5">{dateLine}</p>
           </button>
-          <span className="pg-live-pill">
-            {weather.live ? (
-              <>
-                <span className="live-dot" /> LIVE
-              </>
-            ) : (
-              <>
-                <span className="live-dot-off" /> OFF
-              </>
-            )}
-            <span className="text-white/40">· {minsAgo}m</span>
-          </span>
+          <DataStatusPill status={dataStatus} lang={lang} />
         </div>
 
         {/* Samsung-style: big temp LEFT + dynamic 2D person RIGHT */}
@@ -522,14 +524,20 @@ export default function DashboardTab({
             <p className="text-[12px] sm:text-[13px] text-white/55 mt-0.5 max-w-[16rem]">
               {cond.secondary}
             </p>
-            <p className="text-[12px] text-white/50 mt-2 tabular-nums">
-              {t(d0.max)}° / {t(d0.min)}°
-              <span className="text-white/35"> · </span>
-              {lang === 'hi' ? 'महसूस' : 'Feels'} {t(c.feelsLike)}°
-            </p>
-            <div className="flex flex-wrap items-center gap-2 mt-3">
-              <span className="hl-pill">H {t(d0.max)}°</span>
-              <span className="hl-pill">L {t(d0.min)}°</span>
+            <div className="hero-meta-row mt-2.5">
+              <span className="hero-feels tabular-nums">
+                {lang === 'hi' ? 'महसूस' : 'Feels like'}{' '}
+                <strong>{t(c.feelsLike)}°</strong>
+              </span>
+              <span className="hero-meta-sep" aria-hidden>
+                ·
+              </span>
+              <span className="hl-pill" title={lang === 'hi' ? 'उच्च' : 'High'}>
+                H {t(d0.max)}°
+              </span>
+              <span className="hl-pill" title={lang === 'hi' ? 'निम्न' : 'Low'}>
+                L {t(d0.min)}°
+              </span>
               <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${riskBadge.cls}`}>
                 {riskBadge.label}
               </span>
@@ -631,13 +639,36 @@ export default function DashboardTab({
           )
         })}
       </div>
-      {isDesktop && (
-        <div className="mt-3 h-[100px] w-full rounded-xl overflow-hidden bg-white/[0.03] border border-white/[0.06]">
-          <Suspense fallback={<div className="h-full shimmer-dark rounded-xl" />}>
-            <HourlyTempChart data={chartData} lang={lang} onPick={setHourIdx} />
-          </Suspense>
+      {activeHour && (
+        <div className="hour-detail-strip" aria-live="polite">
+          <span className="tabular-nums font-semibold text-white">
+            {shortHourLabel(activeHour, hourIdx, lang)}
+          </span>
+          <span className="tabular-nums text-sky-200">{t(hourIdx > 0 ? activeHour.temp : c.temp)}°</span>
+          <span className="text-white/55">
+            POP <strong className="text-white/85">{activeHour.pop ?? '—'}%</strong>
+          </span>
+          <span className="text-white/55">
+            {lang === 'hi' ? 'वर्षा' : 'Rain'}{' '}
+            <strong className="text-white/85">{activeHour.rain ?? activeHour.precipitation ?? 0} mm</strong>
+          </span>
+          {(activeHour.wind != null || c.wind != null) && (
+            <span className="text-white/55 hidden xs:inline sm:inline">
+              {lang === 'hi' ? 'हवा' : 'Wind'}{' '}
+              <strong className="text-white/85">{activeHour.wind ?? c.wind} km/h</strong>
+            </span>
+          )}
         </div>
       )}
+      <div
+        className={`mt-3 w-full rounded-xl overflow-hidden bg-white/[0.03] border border-white/[0.06] ${
+          isDesktop ? 'h-[128px]' : 'h-[100px]'
+        }`}
+      >
+        <Suspense fallback={<div className="h-full shimmer-dark rounded-xl" />}>
+          <HourlyTempChart data={chartData} lang={lang} onPick={setHourIdx} />
+        </Suspense>
+      </div>
     </section>
   )
 
@@ -767,7 +798,25 @@ export default function DashboardTab({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 mb-1.5">
             <span className={`pg-badge ${alertMeta.cls}`}>{alertMeta.label}</span>
-            <span className="pg-badge-source">{topAlert.source || 'MODEL'}</span>
+            <span
+              className={`pg-badge-source ${
+                topAlert.kind === 'official' || topAlert.official
+                  ? 'is-official'
+                  : topAlert.kind === 'demo' || topAlert.simulated
+                    ? 'is-demo'
+                    : 'is-risk'
+              }`}
+            >
+              {topAlert.kind === 'official' || topAlert.official
+                ? lang === 'hi'
+                  ? 'आधिकारिक'
+                  : 'Official'
+                : topAlert.kind === 'demo' || topAlert.simulated
+                  ? 'Demo'
+                  : lang === 'hi'
+                    ? 'जोखिम संकेत'
+                    : 'Risk signal'}
+            </span>
           </div>
           <p className="text-[14px] font-semibold text-white">
             {lang === 'hi' ? topAlert.title_hi || topAlert.title : topAlert.title}
@@ -913,6 +962,10 @@ export default function DashboardTab({
     </section>
   )
 
+  const consensusCard = !coreOnly ? (
+    <ModelConsensusCard lang={lang} city={weather?.city} weather={weather} />
+  ) : null
+
   const sourcesCard = (
     <section className="pg-card !p-0 overflow-hidden">
       <button
@@ -936,7 +989,7 @@ export default function DashboardTab({
               </li>
             ))}
             <li className="text-[11px] opacity-50 pt-1">
-              {lang === 'hi' ? 'अंतिम अपडेट' : 'Last updated'}: {minsAgo}{' '}
+              {lang === 'hi' ? 'अंतिम अपडेट' : 'Last updated'}: {minsAgo ?? 0}{' '}
               {lang === 'hi' ? 'मिनट पहले' : 'min ago'}
             </li>
           </ul>
@@ -948,6 +1001,14 @@ export default function DashboardTab({
   return (
     <div className={`relative h-full overflow-y-auto scroll-thin scroll-dark ${sky}`}>
       <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/[0.03] via-transparent to-black/40" />
+      <div className="relative z-[2] page-pad pt-1 pb-0">
+        <DataStatusBanner status={dataStatus} lang={lang} onRetry={onRefresh} />
+        {coreOnly ? (
+          <p className="text-[10px] text-white/40 px-1 pb-1">
+            {lang === 'hi' ? 'कम बैंडविड्थ · मुख्य मौसम प्राथमिक' : 'Low bandwidth · core weather first'}
+          </p>
+        ) : null}
+      </div>
       <div
         className={`relative reveal-stagger page-pad pt-2 sm:pt-3 pb-8 ${
           isDesktop ? 'pg-desk max-w-[1440px] mx-auto' : 'space-y-3 max-w-lg mx-auto'
@@ -966,6 +1027,7 @@ export default function DashboardTab({
             </div>
             {/* Row 2: Hourly full width */}
             <div className="pg-bento-hourly">{hourlyCard}</div>
+            {consensusCard ? <div className="pg-bento-consensus">{consensusCard}</div> : null}
             {/* Row 3: Overview + AQI / metrics */}
             <div className="pg-bento-mid">
               <div className="min-w-0">{overviewCard}</div>
@@ -1005,23 +1067,25 @@ export default function DashboardTab({
             <div className="desktop-span-2">{decisionsCard}</div>
             <div className="desktop-span-2 max-w-md">{sourcesCard}</div>
             <p className="text-[10px] text-center text-white/25 pb-1">
-              WeatherGPT · {weather.live ? 'LIVE' : 'offline'} · premium glass dashboard
+              WeatherGPT · {dataStatus?.code || (weather.live ? 'live' : 'cached')} · {dataStatus?.stale ? 'stale ok' : 'fresh'}
             </p>
           </>
         ) : (
           <>
+            {/* Mobile hierarchy: hero → alert → hours → 7-day → metrics → models → decisions */}
             {heroCard}
             {alertCard}
             {hourlyCard}
             {weekCard}
             {overviewCard}
             {aqiCard}
+            {consensusCard}
             {citiesCard}
             {briefCard}
             {decisionsCard}
             {sourcesCard}
-            <p className="text-[10px] text-center text-white/25 pb-1">
-              WeatherGPT · {weather.live ? 'LIVE' : 'offline'}
+            <p className="text-[10px] text-center text-white/25 pb-1 pt-1">
+              WeatherGPT · {dataStatus?.code || (weather.live ? 'live' : 'cached')}
             </p>
           </>
         )}

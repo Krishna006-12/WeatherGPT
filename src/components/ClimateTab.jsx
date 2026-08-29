@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Area,
@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { Activity, CloudRain, Layers, Thermometer } from 'lucide-react'
 import { fetchClimate, fetchModels } from '../services/climate'
+import { shouldDeferHeavyUI, getNetworkSnapshot } from '../services/networkStatus'
 
 export default function ClimateTab({ lang, city, weather }) {
   const [climate, setClimate] = useState(null)
@@ -22,6 +23,7 @@ export default function ClimateTab({ lang, city, weather }) {
 
   useEffect(() => {
     let cancelled = false
+    const ac = new AbortController()
     const c = city || weather?.city
     if (!c?.lat) {
       setLoading(false)
@@ -31,25 +33,45 @@ export default function ClimateTab({ lang, city, weather }) {
     setErr(null)
     ;(async () => {
       try {
+        // climate + models independent — parallel; abort on city switch
+        const weak = shouldDeferHeavyUI(getNetworkSnapshot())
         const [cl, md] = await Promise.all([
-          fetchClimate(c).catch((e) => {
-            throw e
-          }),
-          fetchModels(c).catch(() => null),
+          fetchClimate(c, { signal: ac.signal }),
+          // Multi-model is heavy — skip on 2g/save-data; climate core still loads
+          weak
+            ? Promise.resolve(null)
+            : fetchModels(c, { signal: ac.signal }).catch(() => null),
         ])
-        if (cancelled) return
+        if (cancelled || ac.signal.aborted) return
         setClimate(cl)
         setModels(md)
       } catch (e) {
-        if (!cancelled) setErr(e.message || 'Failed')
+        if (cancelled || ac.signal.aborted || /abort/i.test(String(e?.message || ''))) return
+        setErr(e.message || 'Failed')
       } finally {
         if (!cancelled) setLoading(false)
       }
     })()
     return () => {
       cancelled = true
+      try {
+        ac.abort()
+      } catch {
+        /* */
+      }
     }
   }, [city?.id, city?.lat, weather?.city?.id])
+
+  // Hooks must run unconditionally (before loading/error early returns)
+  const chartTemp = useMemo(
+    () =>
+      (climate?.monthly || []).map((m) => ({
+        name: String(m.month || '').slice(5),
+        temp: m.tempMean,
+        rain: m.precipMm,
+      })),
+    [climate?.monthly],
+  )
 
   if (loading) {
     return (
@@ -74,13 +96,23 @@ export default function ClimateTab({ lang, city, weather }) {
 
   const s = climate?.summary || {}
   const monthly = climate?.monthly || []
-  const chartTemp = monthly.map((m) => ({
-    name: m.month.slice(5),
-    temp: m.tempMean,
-    rain: m.precipMm,
-  }))
 
-  const modelRows = (models?.models || []).filter((m) => m.ok)
+  const allModelRows = models?.models || []
+  const modelRows = allModelRows.filter((m) => m.ok || m.available)
+  const failedRows = allModelRows.filter((m) => !(m.ok || m.available))
+  const mode = models?.multi_model_mode || (modelRows.length >= 2 ? 'multi' : modelRows.length === 1 ? 'single' : 'none')
+  const modeLabel =
+    mode === 'multi'
+      ? lang === 'hi'
+        ? 'मल्टी-मॉडल लाइव'
+        : 'Multi-model live'
+      : mode === 'single'
+        ? lang === 'hi'
+          ? 'सिंगल मॉडल (सहमति नहीं)'
+          : 'Single model (not consensus)'
+        : lang === 'hi'
+          ? 'मॉडल अनुपलब्ध'
+          : 'No models'
 
   return (
     <motion.div
@@ -95,7 +127,7 @@ export default function ClimateTab({ lang, city, weather }) {
         </h2>
         <p className="text-[12px] text-white/55 mt-0.5">
           {climate?.place || city?.name || '—'} ·{' '}
-          {lang === 'hi' ? 'आर्काइव + मल्टी-मॉडल (SIH)' : 'Archive + multi-model (SIH)'}
+          {lang === 'hi' ? 'आर्काइव + NWP (SIH)' : 'Archive + NWP (SIH)'} · {modeLabel}
         </p>
       </div>
 
@@ -180,20 +212,30 @@ export default function ClimateTab({ lang, city, weather }) {
         </div>
       </section>
 
-      {/* NWP models */}
+      {/* NWP models — server-aggregated only; never fake missing models */}
       <section className="dash-glass p-4">
         <div className="flex items-center gap-2 mb-2">
           <Layers className="w-4 h-4 text-sky-400" />
           <p className="text-[11px] font-bold uppercase tracking-wider text-white/40">
             {lang === 'hi' ? 'NWP मॉडल तुलना' : 'NWP model comparison'}
           </p>
+          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/10 text-white/70">
+            {modeLabel}
+          </span>
         </div>
         <p className="text-[13px] text-white font-medium mb-3">
           {lang === 'hi'
             ? models?.ensemble?.agreementHi || models?.ensemble?.agreementEn
             : models?.ensemble?.agreementEn || models?.ensemble?.agreementHi}
         </p>
-        {models?.ensemble?.spreadC != null && (
+        {mode === 'single' && (
+          <p className="text-[12px] text-amber-200/90 mb-3">
+            {lang === 'hi'
+              ? 'केवल एक विश्वसनीय मॉडल — मल्टी-मॉडल सहमति का दावा नहीं।'
+              : 'Only one reliable model — not claiming multi-model consensus.'}
+          </p>
+        )}
+        {models?.ensemble?.spreadC != null && mode === 'multi' && (
           <p className="text-[12px] text-white/55 mb-3">
             {lang === 'hi' ? '24घं तापमान स्प्रेड: ' : '24h temp spread: '}
             <strong>{models.ensemble.spreadC}°C</strong>
@@ -207,38 +249,66 @@ export default function ClimateTab({ lang, city, weather }) {
           </p>
         )}
         <div className="space-y-2">
-          {modelRows.map((m) => (
+          {modelRows.map((m) => {
+            const pop =
+              m.today?.pop ??
+              m.today?.precipitation_probability_max ??
+              m.current?.precipitation_probability
+            const popLabel = pop == null ? 'n/a' : `${pop}%`
+            return (
+              <div
+                key={m.id || m.short}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5 border border-white/8"
+              >
+                <span className="text-[11px] font-bold bg-navy-900 text-white px-2 py-0.5 rounded-full w-14 text-center shrink-0">
+                  {m.short || m.id}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-semibold text-white truncate">{m.label || m.id}</p>
+                  <p className="text-[11px] text-white/55">
+                    {lang === 'hi' ? 'अभी ' : 'Now '}
+                    {m.currentTemp ?? m.current?.temperature ?? '—'}°
+                    {m.today && (
+                      <>
+                        {' '}
+                        · H/L {m.today.max ?? m.today.temp_max ?? '—'}°/
+                        {m.today.min ?? m.today.temp_min ?? '—'}° · pop {popLabel}
+                      </>
+                    )}
+                    {m.meta?.variable_notes ? (
+                      <span className="block text-white/35 truncate">{m.meta.variable_notes[0]}</span>
+                    ) : null}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+          {failedRows.map((m) => (
             <div
-              key={m.id || m.short}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5 border border-white/8"
+              key={`fail-${m.id || m.short}`}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-dashed border-white/10 opacity-80"
             >
-              <span className="text-[11px] font-bold bg-navy-900 text-white px-2 py-0.5 rounded-full w-14 text-center">
+              <span className="text-[11px] font-bold bg-white/10 text-white/50 px-2 py-0.5 rounded-full w-14 text-center shrink-0">
                 {m.short || m.id}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-semibold text-white truncate">{m.label || m.id}</p>
-                <p className="text-[11px] text-white/55">
-                  {lang === 'hi' ? 'अभी ' : 'Now '}
-                  {m.currentTemp ?? '—'}°
-                  {m.today && (
-                    <>
-                      {' '}
-                      · H/L {m.today.max}°/{m.today.min}° · pop {m.today.pop ?? '—'}%
-                    </>
-                  )}
+                <p className="text-[12px] font-semibold text-white/50 truncate">{m.label || m.id}</p>
+                <p className="text-[11px] text-white/40 truncate">
+                  {lang === 'hi' ? 'अनुपलब्ध · ' : 'Unavailable · '}
+                  {m.error || 'no data'}
                 </p>
               </div>
             </div>
           ))}
           {!modelRows.length && (
             <p className="text-[12px] text-white/55">
-              {lang === 'hi' ? 'मॉडल डेटा अनुपलब्ध' : 'Model data unavailable'}
+              {lang === 'hi' ? 'मॉडल डेटा अनुपलब्ध — नकली मान नहीं दिखाए' : 'Model data unavailable — no fabricated values'}
             </p>
           )}
         </div>
         <p className="text-[10px] text-white/40 mt-3">
-          GFS · ECMWF · ICON · best_match via Open-Meteo ·{' '}
-          {lang === 'hi' ? 'स्थानीय WRF nest नहीं (क्लाउड NWP)' : 'not a local WRF nest (cloud NWP)'}
+          ECMWF IFS · GFS · ICON · AIFS · best_match · server /api/models ·{' '}
+          {lang === 'hi' ? 'ब्राउज़र मल्टी-कॉल नहीं · स्थानीय WRF नहीं' : 'no browser multi-fetch · not local WRF'}
         </p>
       </section>
     </motion.div>

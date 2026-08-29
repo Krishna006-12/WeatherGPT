@@ -1,9 +1,25 @@
 /**
- * Vercel Serverless — LIVE weather proxy + multi-source alerts
- * GET /api/weather?lat=26.45&lon=80.33&tz=Asia/Kolkata&name=Kanpur
+ * Vercel Serverless — LIVE weather proxy + multi-source alerts + multi-model summary
+ * GET /api/weather?lat=26.45&lon=80.33&tz=Asia/Kolkata&name=Kanpur&multimodel=1
+ *
+ * Primary forecast remains Open-Meteo default (best_match behaviour) so existing
+ * 7-day UI stays intact. Multi-model is aggregated server-side and attached as
+ * `multi_model` — frontend must not fan-out to model endpoints itself.
  */
 
-const UA = { Accept: 'application/json', 'User-Agent': 'WeatherGPT/2.0 (hackathon)' }
+import {
+  aggregateMultiModel,
+  buildDefaultForecastUrl,
+} from './_lib/multiModel.js'
+import {
+  buildRiskSignalsFromForecast,
+  buildAlertBundle,
+  gdacsToOfficialAlert,
+  floodToRiskSignal,
+  normalizeAlert,
+} from './_lib/alertEngine.js'
+
+const UA = { Accept: 'application/json', 'User-Agent': 'WeatherGPT/2.2 (hackathon)' }
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -27,13 +43,7 @@ async function fetchJson(url, timeoutMs = 12000) {
 }
 
 function buildForecastUrl(lat, lon, tz) {
-  return (
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl,visibility` +
-    `&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m` +
-    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,uv_index_max,sunrise,sunset` +
-    `&timezone=${encodeURIComponent(tz)}&forecast_days=7`
-  )
+  return buildDefaultForecastUrl(lat, lon, tz, 7)
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -63,7 +73,6 @@ async function fetchGdacsAlerts(lat, lon) {
       const coords = f.geometry?.coordinates
       if (!coords || coords.length < 2) continue
       const [elon, elat] = coords
-      // India + neighbourhood box first, then distance
       if (elat < 4 || elat > 38 || elon < 66 || elon > 100) continue
       const dist = haversineKm(lat, lon, elat, elon)
       if (dist > 800) continue
@@ -147,74 +156,23 @@ async function fetchFloodSignal(lat, lon) {
   }
 }
 
-function modelAlertsFromForecast(data, name = 'Area') {
+function modelAlertsFromForecast(data, name = 'Area', opts = {}) {
   const daily = data.daily || {}
   const cur = data.current || data.current_weather || {}
-  const code = cur.weather_code ?? cur.weathercode ?? 0
-  const pops = daily.precipitation_probability_max || []
-  const rains = daily.precipitation_sum || []
-  const winds = daily.wind_speed_10m_max || []
-  const codes = daily.weather_code || daily.weathercode || []
-  const maxPop = pops.length ? Math.max(...pops) : 0
-  const maxRain = rains.length ? Math.max(...rains) : 0
-  const maxWind = winds.length ? Math.max(...winds) : 0
-  const maxCode = codes.length ? Math.max(...codes) : code
-  const alerts = []
-
-  if (maxCode >= 95 || code >= 95 || (maxRain > 100 && maxPop > 70)) {
-    alerts.push({
-      id: `model-red-${Date.now()}`,
-      severity: 'red',
-      source: 'Open-Meteo model',
-      category: 'Thunderstorm / extreme rain',
-      title: 'Severe thunderstorm / extreme rain risk',
-      title_hi: 'गंभीर तूफान / अत्यधिक वर्षा जोखिम',
-      summary: `Model flags severe convection / extreme rain near ${name} (code ${maxCode}, peak ${maxRain.toFixed?.(1) ?? maxRain} mm).`,
-      summary_hi: `${name} के पास गंभीर संवहन/अत्यधिक वर्षा संकेत।`,
-      officialText: `Modelled RED (Open-Meteo WMO weather codes + QPF): Thunderstorm/extreme rain signal. Aligns with IMD colour philosophy (Red = take action). Not a substitute for official IMD district warning polygons.`,
-      officialText_hi: `मॉडल RED: तूफान/अत्यधिक वर्षा। आधिकारिक IMD ज़िला चेतावनी का विकल्प नहीं।`,
-      meansForYou: 'Postpone outdoor work & travel if possible. Charge devices, avoid trees/poles.',
-      meansForYou_hi: 'बाहर काम/यात्रा टालें। पेड़/खंभों से दूर रहें।',
-      time: 'Model · live',
-      time_hi: 'मॉडल · लाइव',
-    })
-  } else if (maxRain > 50 || maxPop >= 80 || maxWind > 45) {
-    alerts.push({
-      id: `model-amber-${Date.now()}`,
-      severity: 'amber',
-      source: 'Open-Meteo model',
-      category: 'Heavy rain / wind',
-      title: 'Heavy rain / strong wind watch',
-      title_hi: 'भारी वर्षा / तेज़ हवा वॉच',
-      summary: `Peak rain ~${(maxRain).toFixed?.(1) ?? maxRain} mm, pop ${maxPop}%, wind ${Math.round(maxWind)} km/h near ${name}.`,
-      summary_hi: `वर्षा ~${maxRain} मिमी, संभावना ${maxPop}%, हवा ${Math.round(maxWind)} किमी/घं।`,
-      officialText: `Modelled AMBER watch from ensemble precipitation & wind fields.`,
-      officialText_hi: `मॉडल एम्बर वॉच: वर्षा व हवा क्षेत्रों से।`,
-      meansForYou: 'Carry rain gear; avoid underpasses after dark.',
-      meansForYou_hi: 'रेनगियर रखें; अंधेरे में अंडरपास से बचें।',
-      time: 'Model · live',
-      time_hi: 'मॉडल · लाइव',
-    })
-  } else if ((pops[0] || 0) >= 55 || (rains[0] || 0) > 5 || code >= 61) {
-    alerts.push({
-      id: `model-yellow-${Date.now()}`,
-      severity: 'yellow',
-      source: 'Open-Meteo model',
-      category: 'Rain likely',
-      title: 'Rain likely — yellow advisory',
-      title_hi: 'बारिश संभावित — येलो',
-      summary: `Today rain chance ~${pops[0] || 0}% near ${name}.`,
-      summary_hi: `आज बारिश संभावना ~${pops[0] || 0}%。`,
-      officialText: `Modelled YELLOW advisory from short-range precipitation probability.`,
-      officialText_hi: `मॉडल येलो: अल्पकालिक वर्षा संभावना से।`,
-      meansForYou: 'Keep umbrella; plan outdoor work in drier morning slots.',
-      meansForYou_hi: 'छतरी रखें; बाहर काम सुबह करें।',
-      time: 'Model · live',
-      time_hi: 'मॉडल · लाइव',
-    })
-  }
-  return alerts
+  const city = { name, id: name, lat: data.latitude, lon: data.longitude }
+  return buildRiskSignalsFromForecast(
+    city,
+    {
+      precipitation_probability_max: daily.precipitation_probability_max || [],
+      precipitation_sum: daily.precipitation_sum || [],
+      wind_speed_10m_max: daily.wind_speed_10m_max || [],
+      weather_code: daily.weather_code || daily.weathercode || [],
+    },
+    { weather_code: cur.weather_code ?? cur.weathercode ?? 0 },
+    { confidence: opts.confidence || null, nowMs: opts.nowMs }
+  )
 }
+
 
 export default async function handler(req, res) {
   cors(res)
@@ -225,6 +183,11 @@ export default async function handler(req, res) {
     const lon = parseFloat(req.query.lon)
     const tz = (req.query.tz || 'auto').toString()
     const name = (req.query.name || 'Area').toString()
+    // multimodel=0 disables; default ON (compact summary only — not full hourly×N)
+    const wantMulti =
+      req.query.multimodel !== '0' &&
+      req.query.multimodel !== 'false' &&
+      req.query.mm !== '0'
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return res.status(400).json({ error: 'lat and lon required', live: false })
@@ -265,25 +228,110 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'Weather upstream failed', errors, live: false })
     }
 
-    // Parallel live alert sources
-    const [gdacs, flood] = await Promise.all([fetchGdacsAlerts(lat, lon), fetchFloodSignal(lat, lon)])
-    const model = modelAlertsFromForecast(forecast, name)
-    const live_alerts = [...gdacs, ...flood, ...model]
+    // Parallel: live alerts + multi-model aggregate (server-side only)
+    const multiP = wantMulti
+      ? aggregateMultiModel(lat, lon, {
+          name,
+          tz: forecast.timezone || tz,
+          timeoutMs: 12000,
+          forecastDays: 2,
+          hourlyHours: 24,
+        }).catch((e) => ({
+          ok: false,
+          live: false,
+          schema: 'weathergpt.multi_model.v1',
+          error: e.message || 'multi-model failed',
+          multi_model_mode: 'none',
+          models: [],
+          summary: [],
+          ensemble: {
+            modelCount: 0,
+            agreementEn: 'Multi-model layer unavailable.',
+            agreementHi: 'मल्टी-मॉडल परत अनुपलब्ध।',
+            single_model_only: false,
+            is_consensus: false,
+            no_models: true,
+          },
+          unavailable: [],
+          note: 'Primary forecast still live; multi-model attach failed gracefully.',
+        }))
+      : Promise.resolve(null)
+
+    const [gdacs, flood, multiBundle] = await Promise.all([
+      fetchGdacsAlerts(lat, lon),
+      fetchFloodSignal(lat, lon),
+      multiP,
+    ])
+
+    // Compact multi_model first (confidence feeds risk signals)
+    let multi_model = null
+    if (multiBundle) {
+      multi_model = {
+        schema: multiBundle.schema || 'weathergpt.multi_model.v1',
+        ok: !!multiBundle.ok,
+        multi_model_mode: multiBundle.multi_model_mode || 'none',
+        primary_model_id: multiBundle.primary_model_id || 'best_match',
+        available_count: multiBundle.available_count ?? 0,
+        ensemble: multiBundle.ensemble || null,
+        summary: multiBundle.summary || [],
+        unavailable: multiBundle.unavailable || [],
+        note: multiBundle.note,
+        fetchedAt: multiBundle.fetchedAt,
+        sources: multiBundle.sources,
+        // Primary observation in common schema (from best available model)
+        primary_observation: multiBundle.primary_observation || null,
+        // Deterministic forecast confidence (never LLM)
+        confidence: multiBundle.confidence || null,
+      }
+    }
+
+    const conf = multi_model?.confidence || null
+    const riskModel = modelAlertsFromForecast(forecast, name, { confidence: conf })
+    const official = (gdacs || []).map((a) =>
+      gdacsToOfficialAlert({ ...a, place: name, lat, lon })
+    )
+    const riskFlood = (flood || []).map((a) =>
+      floodToRiskSignal({ ...a, place: name, lat, lon })
+    )
+    const alert_bundle = buildAlertBundle({
+      official: official.filter(Boolean),
+      risk: [...riskModel, ...riskFlood.filter(Boolean)],
+      demo: [],
+      officialAvailable: { gdacs: (gdacs || []).length > 0 || gdacs != null },
+    })
+    const live_alerts = alert_bundle.alerts
+    const model = riskModel
 
     return res.status(200).json({
       ...forecast,
       live: true,
       _proxy: true,
       _source: source,
+      // Explicit primary model label for honesty footers
+      model: multi_model?.primary_model_id || 'open-meteo-best_match',
+      model_meta: {
+        name: multi_model?.primary_model_id || 'best_match',
+        source: 'Open-Meteo Forecast API',
+        multi_model_mode: multi_model?.multi_model_mode || 'unknown',
+        fetched_at: new Date().toISOString(),
+      },
+      // Top-level confidence for schema consumers (same object as multi_model.confidence)
+      confidence: multi_model?.confidence || null,
+      multi_model,
       live_alerts,
+      alert_bundle,
+      confidence: multi_model?.confidence || conf || null,
       alert_sources: {
         gdacs: gdacs.length,
         flood: flood.length,
         model: model.length,
-        note: 'IMD official district APIs need API key / IP whitelist — using GDACS + flood model + meteo thresholds (IMD colour philosophy).',
+        official: alert_bundle.counts.official,
+        risk_signal: alert_bundle.counts.risk_signal,
+        note: 'Official alerts: GDACS only when present. IMD/NDMA NOT integrated — never fabricated. Meteo/flood rows are WeatherGPT risk signals.',
       },
     })
   } catch (e) {
     return res.status(500).json({ error: e.message || 'proxy error', live: false })
   }
 }
+

@@ -1,74 +1,21 @@
 /**
- * GET /api/models?lat=&lon=&name=
- * Multi-NWP snapshot: Open-Meteo model runs (GFS / ECMWF / ICON / best_match).
- * Compares next-24h temp + precip probability across models for transparency.
+ * GET /api/models?lat=&lon=&name=&tz=
+ * Multi-NWP engine: ECMWF IFS · GFS · ICON · ECMWF AIFS · best_match
+ * All aggregation happens here — frontend must not fan-out to model URLs.
+ *
+ * Response schema: weathergpt.multi_model.v1
+ * - models[] each normalized to common observation schema
+ * - unavailable models: available:false + error (never faked)
+ * - single reliable model → multi_model_mode:"single" (no false consensus)
  */
 
-const UA = { Accept: 'application/json', 'User-Agent': 'WeatherGPT/2.1-SIH' }
-
-const MODELS = [
-  { id: 'best_match', label: 'Best match (blend)', short: 'Blend' },
-  { id: 'gfs_seamless', label: 'GFS seamless (NCEP)', short: 'GFS' },
-  { id: 'ecmwf_ifs025', label: 'ECMWF IFS 0.25°', short: 'ECMWF' },
-  { id: 'icon_seamless', label: 'ICON seamless (DWD)', short: 'ICON' },
-]
+import { aggregateMultiModel, MODEL_CATALOG } from './_lib/multiModel.js'
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600')
-}
-
-async function fetchJson(url, ms = 14000) {
-  const c = new AbortController()
-  const t = setTimeout(() => c.abort(), ms)
-  try {
-    const r = await fetch(url, { headers: UA, signal: c.signal })
-    const text = await r.text()
-    if (!r.ok) throw new Error('HTTP ' + r.status)
-    if (text.trimStart().startsWith('<')) throw new Error('HTML')
-    return JSON.parse(text)
-  } finally {
-    clearTimeout(t)
-  }
-}
-
-async function fetchModel(lat, lon, model) {
-  const url =
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&models=${model}` +
-    `&current=temperature_2m,weather_code,wind_speed_10m,precipitation` +
-    `&hourly=temperature_2m,precipitation_probability,precipitation` +
-    `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max` +
-    `&timezone=auto&forecast_days=2`
-  const data = await fetchJson(url, 14000)
-  const cur = data.current || {}
-  const hourly = data.hourly || {}
-  const daily = data.daily || {}
-  const temps = (hourly.temperature_2m || []).slice(0, 24)
-  const pops = (hourly.precipitation_probability || []).slice(0, 24)
-  const rains = (hourly.precipitation || []).slice(0, 24)
-  const avg = (a) => (a.length ? a.reduce((x, y) => x + (y || 0), 0) / a.length : null)
-  const max = (a) => (a.length ? Math.max(...a.map((x) => x || 0)) : null)
-  return {
-    model,
-    currentTemp: cur.temperature_2m != null ? Math.round(cur.temperature_2m) : null,
-    currentCode: cur.weather_code ?? null,
-    currentWind: cur.wind_speed_10m != null ? Math.round(cur.wind_speed_10m) : null,
-    next24h: {
-      tempMean: avg(temps) != null ? +avg(temps).toFixed(1) : null,
-      tempMax: max(temps),
-      popMax: max(pops),
-      rainSum: rains.length ? +rains.reduce((a, b) => a + (b || 0), 0).toFixed(1) : null,
-    },
-    today: {
-      max: daily.temperature_2m_max?.[0] != null ? Math.round(daily.temperature_2m_max[0]) : null,
-      min: daily.temperature_2m_min?.[0] != null ? Math.round(daily.temperature_2m_min[0]) : null,
-      rain: daily.precipitation_sum?.[0] != null ? +Number(daily.precipitation_sum[0]).toFixed(1) : null,
-      pop: daily.precipitation_probability_max?.[0] ?? null,
-    },
-  }
+  res.setHeader('Cache-Control', 's-maxage=180, stale-while-revalidate=420')
 }
 
 export default async function handler(req, res) {
@@ -78,64 +25,108 @@ export default async function handler(req, res) {
   try {
     const lat = parseFloat(req.query.lat)
     const lon = parseFloat(req.query.lon)
-    const name = (req.query.name || 'Area').toString().slice(0, 48)
+    const name = (req.query.name || 'Area').toString().slice(0, 64)
+    const tz = (req.query.tz || 'auto').toString()
+
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      return res.status(400).json({ ok: false, error: 'lat lon required' })
-    }
-
-    const results = await Promise.all(
-      MODELS.map(async (m) => {
-        try {
-          const snap = await fetchModel(lat, lon, m.id)
-          return { ...m, ok: true, ...snap }
-        } catch (e) {
-          return { ...m, ok: false, error: e.message }
-        }
+      return res.status(400).json({
+        ok: false,
+        error: 'lat and lon required',
+        schema: 'weathergpt.multi_model.v1',
+        catalog: MODEL_CATALOG.map((m) => ({
+          id: m.id,
+          name: m.name,
+          short: m.short,
+          family: m.family,
+          provider: m.provider,
+        })),
       })
-    )
-
-    const okRows = results.filter((r) => r.ok && r.next24h?.tempMean != null)
-    const temps = okRows.map((r) => r.next24h.tempMean)
-    const spread =
-      temps.length >= 2 ? +(Math.max(...temps) - Math.min(...temps)).toFixed(1) : null
-    const meanTemp = temps.length ? +(temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : null
-
-    let agreementEn = 'Limited model sample.'
-    let agreementHi = 'सीमित मॉडल सैंपल।'
-    if (spread != null) {
-      if (spread <= 1.2) {
-        agreementEn = `High agreement — 24h mean temp spread only ${spread}°C across models.`
-        agreementHi = `उच्च सहमति — 24घं औसत तापमान फैल सिर्फ ${spread}°C।`
-      } else if (spread <= 2.5) {
-        agreementEn = `Moderate agreement — spread ${spread}°C; prefer blend for planning.`
-        agreementHi = `मध्यम सहमति — फैल ${spread}°C; प्लानिंग के लिए ब्लेंड बेहतर।`
-      } else {
-        agreementEn = `Low agreement — spread ${spread}°C; treat forecast with extra caution.`
-        agreementHi = `कम सहमति — फैल ${spread}°C; अतिरिक्त सावधानी।`
-      }
     }
+
+    // Optional: ?models=ecmwf_ifs025,gfs_seamless to subset (still server-side)
+    let catalog = MODEL_CATALOG
+    const filter = (req.query.models || req.query.only || '').toString().trim()
+    if (filter) {
+      const ids = new Set(
+        filter
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      )
+      const subset = MODEL_CATALOG.filter((m) => ids.has(m.id))
+      if (subset.length) catalog = subset
+    }
+
+    // Probe mode: force one fake-unavailable id for tests
+    if (req.query.probe === 'unavailable') {
+      catalog = [
+        ...catalog,
+        {
+          id: 'not_a_real_model_xyz',
+          name: 'Invalid probe model',
+          short: 'BAD',
+          family: 'probe',
+          provider: 'none',
+          role: 'compare',
+          notes: 'Intentional invalid id for graceful failure tests',
+        },
+      ]
+    }
+
+    const bundle = await aggregateMultiModel(lat, lon, {
+      name,
+      tz,
+      catalog,
+      timeoutMs: 14000,
+      forecastDays: 2,
+      hourlyHours: 48,
+    })
+
+    // Legacy ClimateTab fields kept on each model row:
+    // ok, currentTemp, today, next24h (engine already maps these)
 
     return res.status(200).json({
-      ok: true,
-      live: true,
-      place: name,
-      lat,
-      lon,
-      models: results,
-      ensemble: {
-        meanTemp24h: meanTemp,
-        spreadC: spread,
-        modelCount: okRows.length,
-        agreementEn,
-        agreementHi,
-      },
-      sources: [
-        { name: 'Open-Meteo multi-model', role: 'GFS / ECMWF / ICON / best_match', url: 'https://open-meteo.com' },
-      ],
-      note: 'NWP comparison for transparency — not a full WRF local nest. SIH decision-support layer.',
-      fetchedAt: Date.now(),
+      ...bundle,
+      // Back-compat aliases used by older ClimateTab copy
+      models: bundle.models.map((m) => ({
+        ...m,
+        // ClimateTab historically expected next24h.tempMean / popMax / rainSum
+        next24h: m.next24h
+          ? {
+              ...m.next24h,
+              tempMean: m.next24h.temp_mean,
+              tempMax: m.next24h.temp_max,
+              popMax: m.next24h.pop_max,
+              rainSum: m.next24h.rain_sum,
+            }
+          : m.next24h,
+        today: m.today
+          ? {
+              max: m.today.temp_max != null ? Math.round(m.today.temp_max) : null,
+              min: m.today.temp_min != null ? Math.round(m.today.temp_min) : null,
+              rain: m.today.precipitation_sum,
+              pop: m.today.precipitation_probability_max,
+              ...m.today,
+            }
+          : m.today,
+      })),
     })
   } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message || 'models error' })
+    return res.status(500).json({
+      ok: false,
+      live: false,
+      schema: 'weathergpt.multi_model.v1',
+      error: e.message || 'models error',
+      multi_model_mode: 'none',
+      models: [],
+      ensemble: {
+        modelCount: 0,
+        agreementEn: 'Engine error — no model data.',
+        agreementHi: 'इंजन त्रुटि — मॉडल डेटा नहीं।',
+        single_model_only: false,
+        is_consensus: false,
+        no_models: true,
+      },
+    })
   }
 }

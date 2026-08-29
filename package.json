@@ -13,7 +13,10 @@
     "api": "node scripts/local-api-server.mjs",
     "dev:full": "node scripts/local-api-server.mjs & vite",
     "ship": "npm run build && vercel --prod",
-    "git:status": "git status -sb"
+    "git:status": "git status -sb",
+    "intel": "cd python-intel && python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8090",
+    "intel:test": "cd python-intel && python3 -m pytest -q",
+    "intel:install": "cd python-intel && python3 -m pip install -r requirements.txt"
   },
   "dependencies": {
     "framer-motion": "^13.1.1",

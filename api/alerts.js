@@ -10,6 +10,14 @@
  * No fabricated events — empty array when sources quiet.
  */
 
+import {
+  buildAlertBundle,
+  gdacsToOfficialAlert,
+  floodToRiskSignal,
+  normalizeAlert,
+  buildRiskSignalsFromForecast,
+} from './_lib/alertEngine.js'
+
 const UA = { Accept: 'application/json', 'User-Agent': 'WeatherGPT/2.0 (alerts)' }
 
 function cors(res) {
@@ -187,86 +195,21 @@ async function fetchMeteoAlerts(lat, lon, name) {
     const data = await fetchJson(url, 12000)
     const daily = data.daily || {}
     const cur = data.current || {}
-    const code = cur.weather_code ?? 0
-    const pops = daily.precipitation_probability_max || []
-    const rains = daily.precipitation_sum || []
-    const winds = daily.wind_speed_10m_max || []
-    const codes = daily.weather_code || []
-    const maxPop = pops.length ? Math.max(...pops) : 0
-    const maxRain = rains.length ? Math.max(...rains) : 0
-    const maxWind = winds.length ? Math.max(...winds) : 0
-    const maxCode = codes.length ? Math.max(...codes) : code
-    const alerts = []
-
-    if (maxCode >= 95 || code >= 95 || (maxRain > 100 && maxPop > 70)) {
-      alerts.push({
-        id: `meteo-red-${lat.toFixed(2)}-${lon.toFixed(2)}`,
-        severity: 'red',
-        source: 'Open-Meteo model',
-        category: 'Thunderstorm / extreme rain',
-        title: `Severe weather risk — ${name}`,
-        title_hi: `गंभीर मौसम जोखिम — ${name}`,
-        summary: `Thunderstorm / extreme rain signal near ${name} (code ${maxCode}, peak ~${Number(maxRain).toFixed(0)} mm).`,
-        summary_hi: `${name} के पास गंभीर तूफान/अत्यधिक वर्षा संकेत।`,
-        officialText: `Modelled RED (Open-Meteo): severe convection / extreme rain near ${name}. Not a substitute for official IMD district warnings.`,
-        officialText_hi: `मॉडल RED: ${name} — आधिकारिक IMD चेतावनी का विकल्प नहीं।`,
-        meansForYou: 'Postpone outdoor work & non-essential travel if possible.',
-        meansForYou_hi: 'बाहर काम/गैर-ज़रूरी यात्रा टालें।',
-        time: 'Model · live',
-        time_hi: 'मॉडल · लाइव',
-        distanceKm: 0,
-        lat,
-        lon,
-        external: false,
-      })
-    } else if (maxRain > 50 || maxPop >= 80 || maxWind > 45) {
-      alerts.push({
-        id: `meteo-amber-${lat.toFixed(2)}-${lon.toFixed(2)}`,
-        severity: 'amber',
-        source: 'Open-Meteo model',
-        category: 'Heavy rain / wind',
-        title: `Heavy rain / wind watch — ${name}`,
-        title_hi: `भारी वर्षा / हवा वॉच — ${name}`,
-        summary: `Peak rain ~${Number(maxRain).toFixed(0)} mm, pop ${maxPop}%, wind ${Math.round(maxWind)} km/h.`,
-        summary_hi: `वर्षा ~${Number(maxRain).toFixed(0)} मिमी, संभावना ${maxPop}%, हवा ${Math.round(maxWind)} किमी/घं।`,
-        officialText: `Modelled AMBER watch near ${name}.`,
-        officialText_hi: `मॉडल एम्बर वॉच — ${name}।`,
-        meansForYou: 'Carry rain gear; avoid underpasses after dark.',
-        meansForYou_hi: 'रेनगियर रखें; अंधेरे में अंडरपास से बचें।',
-        time: 'Model · live',
-        time_hi: 'मॉडल · लाइव',
-        distanceKm: 0,
-        lat,
-        lon,
-        external: false,
-      })
-    } else if ((pops[0] || 0) >= 55 || (rains[0] || 0) > 5 || code >= 61) {
-      alerts.push({
-        id: `meteo-yellow-${lat.toFixed(2)}-${lon.toFixed(2)}`,
-        severity: 'yellow',
-        source: 'Open-Meteo model',
-        category: 'Rain likely',
-        title: `Rain likely — ${name}`,
-        title_hi: `बारिश संभावित — ${name}`,
-        summary: `Today rain chance ~${pops[0] || 0}% near ${name}.`,
-        summary_hi: `आज बारिश संभावना ~${pops[0] || 0}% — ${name}।`,
-        officialText: `Modelled YELLOW advisory near ${name}.`,
-        officialText_hi: `मॉडल येलो — ${name}।`,
-        meansForYou: 'Keep umbrella; prefer morning outdoor slots.',
-        meansForYou_hi: 'छतरी रखें; बाहर काम सुबह करें।',
-        time: 'Model · live',
-        time_hi: 'मॉडल · लाइव',
-        distanceKm: 0,
-        lat,
-        lon,
-        external: false,
-      })
-    }
-    return alerts
+    return buildRiskSignalsFromForecast(
+      { name, id: name, lat, lon },
+      {
+        precipitation_probability_max: daily.precipitation_probability_max || [],
+        precipitation_sum: daily.precipitation_sum || [],
+        wind_speed_10m_max: daily.wind_speed_10m_max || [],
+        weather_code: daily.weather_code || [],
+      },
+      { weather_code: cur.weather_code ?? 0 }
+    )
   } catch {
     return []
   }
 }
+
 
 function mergeAlerts(list) {
   const rank = { red: 0, amber: 1, yellow: 2, green: 3 }
@@ -294,20 +237,41 @@ async function alertsForPoint(point, radiusKm) {
     fetchFloodSignal(lat, lon, name),
     fetchMeteoAlerts(lat, lon, name),
   ])
-  const tagged = [...gdacs, ...flood, ...meteo].map((a) => ({
+  const official = (gdacs || []).map((a) =>
+    gdacsToOfficialAlert({ ...a, place: name, placeLat: lat, placeLon: lon, lat, lon })
+  )
+  const riskFlood = (flood || []).map((a) =>
+    floodToRiskSignal({ ...a, place: name, placeLat: lat, placeLon: lon, lat, lon })
+  )
+  const riskMeteo = (meteo || []).map((a) =>
+    normalizeAlert({ ...a, place: name, placeLat: lat, placeLon: lon, lat, lon })
+  )
+  const bundle = buildAlertBundle({
+    official: official.filter(Boolean),
+    risk: [...riskFlood, ...riskMeteo].filter(Boolean),
+    demo: [],
+    officialAvailable: { gdacs: gdacs.length > 0 },
+  })
+  const tagged = bundle.alerts.map((a) => ({
     ...a,
-    place: name,
+    place: a.place || name,
     placeLat: lat,
     placeLon: lon,
-    // stable notify key includes place so Delhi ≠ Kanpur
     notifyKey: `${a.id}::${name}`,
   }))
   return {
     place: name,
     lat,
     lon,
-    counts: { gdacs: gdacs.length, flood: flood.length, model: meteo.length },
+    counts: {
+      gdacs: gdacs.length,
+      flood: flood.length,
+      model: meteo.length,
+      official: bundle.counts.official,
+      risk_signal: bundle.counts.risk_signal,
+    },
     alerts: tagged,
+    alert_bundle: bundle,
   }
 }
 
@@ -347,9 +311,13 @@ export default async function handler(req, res) {
       sources: [
         { name: 'GDACS', role: 'Live multi-hazard events' },
         { name: 'Open-Meteo Flood', role: 'River discharge signal' },
-        { name: 'Open-Meteo forecast', role: 'Meteo threshold alerts' },
+        { name: 'WeatherGPT risk engine', role: 'Deterministic meteo thresholds (NOT official)' },
       ],
-      note: 'IMD district polygon APIs need official key — colour framing follows IMD philosophy on open models.',
+      note: 'OFFICIAL = GDACS when present. RISK = WeatherGPT model thresholds / flood model. IMD/NDMA never fabricated.',
+      honesty: {
+        en: 'Official alerts only from verified feeds (GDACS). Risk signals are WeatherGPT-generated — not government warnings.',
+        hi: 'आधिकारिक केवल सत्यापित फ़ीड (GDACS)। जोखिम संकेत WeatherGPT — सरकारी चेतावनी नहीं।',
+      },
     })
   } catch (e) {
     return res.status(500).json({ ok: false, alerts: [], error: e.message || 'alerts error' })

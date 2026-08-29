@@ -12,6 +12,17 @@
  * GET /api/chat → capability discovery
  */
 
+import {
+  buildVerifiedWeatherContext,
+  isTrivialWeatherQuery,
+  groundingSystemPrompt,
+  stricterGroundingSystemPrompt,
+  validateGroundedResponse,
+  trivialDeterministicAnswer,
+  GROUNDING_SCHEMA,
+} from './_lib/grounding.js'
+
+
 const UA = { Accept: 'application/json', 'User-Agent': 'WeatherGPT/2.2-chat' }
 
 /** Normalize one API key string */
@@ -361,7 +372,7 @@ const FAMOUS = [
 const PLACE_NOISE = new Set(
   (
     'the a an what where when how is are was were weather forecast rain temp temperature climate please now today tomorrow right just me my of in at for to from ' +
-    'good bad why exactly sentences sentence explain ignore normal format current mention uncertainty recommendation ' +
+    'good bad why exactly sentences sentence explain ignore normal format current mention uncertainty recommendation humidity temperature temp wind rain chance probability feels sunrise sunset kitna tapman nami ' +
     'capital france who president history define meaning translate jungle forest mountain river'
   ).split(' ')
 )
@@ -760,28 +771,24 @@ function routeIntent(message, extra = {}) {
  * - Weather path: soft-check that live numbers appear when tools exist
  * - Never invent numbers here — only accept/reject model text
  */
-function validateResponse(text, { route, wx, message } = {}) {
+function validateResponse(text, { route, wx, message, verifiedContext } = {}) {
+  // Prefer strict grounded validator when verified context exists
+  if (verifiedContext || (route === 'weather_crop' && wx)) {
+    const ctx =
+      verifiedContext ||
+      buildVerifiedWeatherContext(wx, { name: wx?.place, lat: wx?.lat, lon: wx?.lon })
+    return validateGroundedResponse(text, ctx, { route: route || 'weather_crop', message })
+  }
   const t = String(text || '').trim()
   if (!t) return { ok: false, reason: 'empty' }
   if (t.length < 24) return { ok: false, reason: 'too_short' }
-  // Mid-word cut heuristics (e.g. "Feels like 32")
   if (/\b(feels like|feels|humidity|wind|temperature|temp)\s*$/i.test(t)) {
     return { ok: false, reason: 'truncated_mid_phrase' }
   }
-  if (/[.:,;]\s*$/.test(t) && t.length < 80 && !/\n/.test(t)) {
-    // very short ending with colon often truncated template
-    if (/:\s*$/.test(t)) return { ok: false, reason: 'truncated_colon' }
+  if (/:\s*$/.test(t) && t.length < 80 && !/\n/.test(t)) {
+    return { ok: false, reason: 'truncated_colon' }
   }
-  if (route === 'weather_crop' && wx?.current) {
-    const temp = wx.current.temp_c
-    const hasDigit = /\d/.test(t)
-    // If model ignored tools entirely (no digits) on a weather Q — reject so rules can answer with real numbers
-    const q = String(message || '').toLowerCase()
-    const wantsNumbers = /temp|weather|rain|irrigat|°|celsius|baarish|mausam|forecast|crop|wheat|humidity|wind/.test(q)
-    if (wantsNumbers && !hasDigit && Number.isFinite(temp)) {
-      return { ok: false, reason: 'missing_grounded_numbers' }
-    }
-  }
+  if (/\bundefined\b|\bNaN\b/.test(t)) return { ok: false, reason: 'malformed_tokens' }
   return { ok: true, text: t }
 }
 
@@ -884,80 +891,101 @@ async function llmPhrase(wx, message, lang, extra = {}) {
       message,
     ) || /[\u0900-\u097F]/.test(message)
   const crop = extra.crop || null
-  const c = wx?.current || {}
-  const d0 = (wx?.daily && wx.daily[0]) || {}
-  const snap =
-    `LIVE NOW in ${wx?.place || 'area'}: ` +
-    `${c.temp_c != null ? Math.round(c.temp_c) + '°C' : 'temp n/a'} ` +
-    `(feels ${c.feels_c != null ? Math.round(c.feels_c) + '°C' : 'n/a'}), ` +
-    `humidity ${c.humidity_pct != null ? Math.round(c.humidity_pct) + '%' : 'n/a'}, ` +
-    `wind ${c.wind_kmh != null ? Math.round(c.wind_kmh) + ' km/h' : 'n/a'}, ` +
-    `code ${c.weather_code ?? 'n/a'}, precip ${c.precip_mm ?? 0} mm. ` +
-    `Today: high/low ${d0.max_c != null ? Math.round(d0.max_c) + '°/' + Math.round(d0.min_c) + '°' : 'n/a'}, ` +
-    `rain chance ${d0.pop_pct ?? '—'}%, rain ${d0.rain_mm ?? 0} mm.`
 
-  const system =
-    'You are WeatherGPT — a sharp weather + farm copilot for India. Quality bar = ChatGPT: natural, specific, useful. ' +
-    'NEVER sound like a generic textbook or government pamphlet. ' +
-    'GROUNDING RULES (hard):\n' +
-    '1) Every temperature, humidity, wind, rain mm, and rain-% MUST come from LOCKED_WEATHER_FACTS / tool JSON — copy digits exactly.\n' +
-    '2) Do not invent or recalculate numbers. If missing, say unavailable. Hindi/Hinglish = translate SAME numbers, never new maths.\n' +
-    '3) Rain probability_pct, amount_mm, and intensity are SEPARATE — never conflate % with mm or intensity labels.\n' +
-    '4) WMO 95 = thunderstorm WITHOUT implied hail. WMO 96/99 = hail POSSIBLE in model class — never guarantee hail is falling.\n' +
-    '5) Do not claim definite yield loss/gain or disease diagnosis; at most "conditions may favour…".\n' +
-    '6) Do not ban all fertilizer/pesticides; use conditional spray language and say check local label.\n' +
-    '7) If crop is off-season (e.g. wheat in August in N. India rabi calendar), flag season mismatch first.\n' +
-    '8) City rankings only if every city has complete data; else say comparison unavailable.\n' +
-    'ANSWER SHAPE (always):\n' +
-    '• First sentence = direct answer to the user (e.g. irrigation: YES / NO / WAIT — with reason tied to LIVE rain/heat).\n' +
-    '• Then 2 short sections max: (1) What the weather is doing now (with numbers) (2) What you should do in next 24-48h.\n' +
-    '• One line uncertainty (e.g. exact mm may vary locally).\n' +
-    '• Optional one-line tip. No long history of CRI stages unless user asked "how irrigation works".\n' +
-    '• If user asked about a city, talk about THAT city only.\n' +
-    '• Keep total under ~160 words unless user asked for detail.\n' +
-    '• End with: Source: AI + Open-Meteo (live tools).\n' +
-    (crop
-      ? 'Crop focus: ' +
-        crop +
-        '. Tie advice to live weather + light agronomy. Prefer action over theory.\n'
-      : '') +
-    (hinglish || lang === 'hi'
-      ? 'Language: natural Hinglish (simple Roman Hindi + English), friendly — jaise kisi smart dost/advisor se baat ho.'
-      : 'Language: clear natural English.')
+  const verified =
+    extra.verifiedContext ||
+    buildVerifiedWeatherContext(wx, {
+      crop,
+      name: wx?.place,
+      lat: wx?.lat,
+      lon: wx?.lon,
+      confidence: extra.confidence,
+      alerts: extra.alerts,
+      modelConsensus: extra.modelConsensus,
+      astro: extra.astro,
+    })
 
-  const locked = (() => {
-    try {
-      const pack = compactWeather(wx)
-      pack.locked = true
-      pack.note =
-        'Numbers are frozen for this answer. Do not change them when translating language.'
-      return pack
-    } catch {
-      return compactWeather(wx)
-    }
-  })()
+  const system = groundingSystemPrompt({ lang, hinglish, crop })
   const user =
     `User asked:\n${message}\n\n` +
     (crop ? `Crop: ${crop}\n` : '') +
-    `${snap}\n\n` +
-    `LOCKED_WEATHER_FACTS (authoritative — copy numbers exactly):\n${JSON.stringify(locked).slice(0, 3500)}\n\n` +
-    `Write the grounded answer now. Lead with the decision/action. Same numbers in Hindi if needed.`
+    `VERIFIED_WEATHER_CONTEXT (authoritative — copy numbers exactly; do not invent):\n` +
+    `${JSON.stringify(verified).slice(0, 4500)}\n\n` +
+    `Write the grounded answer now. Lead with the decision/action. Same numbers if translating.`
 
-  const r = await aiProviderManager(system, user, 'llm_grounded')
-  let text = r.text
-  const brand = r.label || 'AI'
-  text = text
-    .replace(/Source:\s*AI \+ Open-Meteo[^\n]*/i, 'Source: ' + brand + ' + Open-Meteo (live tools)')
-    .replace(/Source:\s*Google Gemini \+ Open-Meteo[^\n]*/i, 'Source: ' + brand + ' + Open-Meteo (live tools)')
+  async function once(sys) {
+    const r = await aiProviderManager(sys, user, 'llm_grounded')
+    let text = r.text
+    const brand = r.label || 'AI'
+    text = text
+      .replace(
+        /Source:\s*AI \+ (?:Open-Meteo|verified)[^\n]*/i,
+        'Source: ' + brand + ' + verified Open-Meteo context',
+      )
+      .replace(
+        /Source:\s*AI \+ Open-Meteo[^\n]*/i,
+        'Source: ' + brand + ' + verified Open-Meteo context',
+      )
+      .replace(
+        /Source:\s*Google Gemini \+ Open-Meteo[^\n]*/i,
+        'Source: ' + brand + ' + verified Open-Meteo context',
+      )
+    const v = validateResponse(text, {
+      route: 'weather_crop',
+      wx,
+      message,
+      verifiedContext: verified,
+    })
+    return { r, text, v }
+  }
 
-  const v = validateResponse(text, { route: 'weather_crop', wx, message })
-  if (!v.ok) {
-    const err = new Error('Response Validator rejected: ' + v.reason)
+  // First attempt
+  let { r, text, v } = await once(system)
+  if (v.ok) {
+    return {
+      text: v.text,
+      provider: r.provider,
+      mode: 'llm_grounded',
+      label: r.label,
+      verifiedContext: verified,
+      validation: { ok: true },
+    }
+  }
+
+  // One stricter retry on validation failure
+  const strictSys = stricterGroundingSystemPrompt({ lang, hinglish, crop })
+  try {
+    const second = await once(strictSys)
+    if (second.v.ok) {
+      return {
+        text: second.v.text,
+        provider: second.r.provider,
+        mode: 'llm_grounded_retry',
+        label: second.r.label,
+        verifiedContext: verified,
+        validation: { ok: true, retried: true, prior_reason: v.reason },
+      }
+    }
+    const err = new Error(
+      'Response Validator rejected after retry: ' +
+        (second.v.reason || v.reason) +
+        (second.v.detail ? ' (' + second.v.detail + ')' : ''),
+    )
+    err.partial = second.text
+    err.validation = second.v
+    throw err
+  } catch (e) {
+    if (e.validation || /Response Validator/.test(String(e.message || ''))) throw e
+    // provider failure on retry — surface first validation fail
+    const err = new Error(
+      'Response Validator rejected: ' + v.reason + (v.detail ? ' (' + v.detail + ')' : ''),
+    )
     err.partial = text
+    err.validation = v
     throw err
   }
-  return { text: v.text, provider: r.provider, mode: 'llm_grounded', label: r.label }
 }
+
 
 
 async function readBody(req) {
@@ -989,33 +1017,29 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end()
 
   if (req.method === 'GET') {
-    const geminiKey = getGeminiKey()
-    const hasGemini = geminiKey.length >= 20
-    const hasOpenAI = !!process.env.OPENAI_API_KEY
+    // Capability discovery only — never expose key material, lengths, or counts
+    const hasGemini = getGeminiKeys().length > 0
+    const hasOpenAI = !!sanitizeKey(process.env.OPENAI_API_KEY || '')
+    const hasGroq = !!sanitizeKey(process.env.GROQ_API_KEY || '')
+    const hasOpenRouter = !!sanitizeKey(process.env.OPENROUTER_API_KEY || '')
+    const llmConfigured = hasGemini || hasOpenAI || hasGroq || hasOpenRouter
     return res.status(200).json({
       ok: true,
       service: 'WeatherGPT hybrid chat',
-      preferred_llm: getOpenAiCompatProviders()[0]?.id || (getGeminiKeys().length ? 'google_gemini' : 'rules'),
-      gemini_model: (process.env.GEMINI_MODEL || 'gemini-3.6-flash').replace(/["']/g, '').trim(),
-      gemini_key_present: getGeminiKeys().length > 0,
-      gemini_key_count: getGeminiKeys().length,
-      gemini_key_length: geminiKey ? geminiKey.length : 0,
-      free_tier_mode: (process.env.GEMINI_FREE_TIER || '1') !== '0',
-      default_mode: getOpenAiCompatProviders().length || hasGemini || hasOpenAI ? 'llm_multi_provider' : 'deterministic_grounded',
-      llm_configured: hasGemini || hasOpenAI || getOpenAiCompatProviders().length > 0,
+      preferred_llm: getOpenAiCompatProviders()[0]?.id || (hasGemini ? 'google_gemini' : 'rules'),
+      default_mode: llmConfigured ? 'llm_multi_provider' : 'deterministic_grounded',
+      llm_configured: llmConfigured,
       llm_providers: {
-        groq: !!sanitizeKey(process.env.GROQ_API_KEY || ''),
-        openrouter: !!sanitizeKey(process.env.OPENROUTER_API_KEY || ''),
+        groq: hasGroq,
+        openrouter: hasOpenRouter,
         gemini: hasGemini,
         openai: hasOpenAI,
       },
       llm_order: 'groq → openrouter → gemini → openai → rules+weather',
       contract:
-        'POST JSON { message, lat?, lon?, name?, lang?, crop? }. Router: weather → Open-Meteo + AI; else → general AI. Providers: Groq, OpenRouter, Gemini, OpenAI.',
+        'POST JSON { message, lat?, lon?, name?, lang?, crop? }. Router: weather → Open-Meteo + AI; else → general AI.',
       honesty: '/HONESTY.txt',
-      gemini_timeout_ms_per_model: 12000,
-      gemini_max_model_attempts: 2,
-      note: 'Pipeline: Intent Router → (weather? Open-Meteo+Engine : skip) → AI Manager Groq→OpenRouter→Gemini→OpenAI → Validator → else Rules+weather.',
+      note: 'Pipeline: Intent Router → Open-Meteo → verified_context → (trivial? rules : LLM) → grounded validator (+1 strict retry) → rules fallback. Groq→OpenRouter→Gemini→OpenAI→rules.',
     })
   }
 
@@ -1143,22 +1167,42 @@ export default async function handler(req, res) {
     // Crop/Weather Engine = live tool pack
     pipeline.steps.push('crop_weather_engine')
     const wx = await toolWeather(lat, lon, name)
+    const verifiedContext = buildVerifiedWeatherContext(wx, {
+      crop: cropHint,
+      name,
+      lat,
+      lon,
+    })
     let mode = 'deterministic_grounded'
     let provider = 'rules+tools'
     let text
     let llmError = null
+    let validationMeta = null
 
-    pipeline.steps.push('ai_provider_manager')
-    try {
-      const llm = await llmPhrase(wx, message, lang, { crop: cropHint })
-      if (llm?.text) {
-        pipeline.steps.push('response_validator')
-        text = llm.text
-        mode = llm.mode
-        provider = llm.provider
+    // Trivial factual Q → rules only (no LLM)
+    if (isTrivialWeatherQuery(message)) {
+      pipeline.steps.push('trivial_rules_bypass')
+      text = trivialDeterministicAnswer(verifiedContext, message, lang)
+      mode = 'deterministic_trivial'
+      provider = 'rules+verified_context'
+    } else {
+      pipeline.steps.push('ai_provider_manager')
+      try {
+        const llm = await llmPhrase(wx, message, lang, {
+          crop: cropHint,
+          verifiedContext,
+        })
+        if (llm?.text) {
+          pipeline.steps.push('response_validator')
+          text = llm.text
+          mode = llm.mode
+          provider = llm.provider
+          validationMeta = llm.validation || { ok: true }
+        }
+      } catch (e) {
+        llmError = e.message
+        validationMeta = e.validation || null
       }
-    } catch (e) {
-      llmError = e.message
     }
 
     // If EVERYTHING fails → Rules + Weather Data
@@ -1167,8 +1211,12 @@ export default async function handler(req, res) {
       pipeline.fallback = true
       const quota = isQuotaError(llmError) || /QUOTA:/i.test(String(llmError || ''))
       text = deterministicAnswer(wx, message, lang, { quota })
-      // validate rules output always has numbers
-      const v = validateResponse(text, { route: 'weather_crop', wx, message })
+      const v = validateResponse(text, {
+        route: 'weather_crop',
+        wx,
+        message,
+        verifiedContext,
+      })
       if (v.ok) text = v.text
       mode = 'deterministic_grounded'
       provider = quota ? 'rules+tools (ai quota)' : 'rules+tools'
@@ -1191,17 +1239,22 @@ export default async function handler(req, res) {
       pipeline,
       place: { name, lat, lon, overridden: !!placeOverride },
       tools: { weather: wx },
+      verified_context: verifiedContext,
+      verified_context_schema: GROUNDING_SCHEMA,
+      validation: validationMeta || undefined,
       citations: [
-        { name: 'Open-Meteo', role: 'Live forecast tool' },
-        ...(mode === 'llm_grounded'
-          ? [{ name: String(provider).split(':')[0], role: 'LLM phrasing (grounded)' }]
+        { name: 'Open-Meteo', role: 'Live forecast tool / verified context' },
+        ...(mode === 'llm_grounded' || mode === 'llm_grounded_retry'
+          ? [{ name: String(provider).split(':')[0], role: 'LLM phrasing (grounded only)' }]
           : [{ name: 'Rules engine', role: 'Deterministic grounded brief' }]),
       ],
       llmError: llmError || undefined,
       honesty:
-        mode === 'llm_grounded'
-          ? 'LLM phrasing only; numbers from Open-Meteo tools'
-          : 'Rules + weather data — AI providers unavailable or rejected',
+        mode === 'llm_grounded' || mode === 'llm_grounded_retry'
+          ? 'LLM explains verified_context only — numbers not invented'
+          : mode === 'deterministic_trivial'
+            ? 'Trivial factual query — rules + verified context, LLM skipped'
+            : 'Rules + weather data — AI unavailable, quota, or validation failed',
       fetchedAt: Date.now(),
     })
   } catch (e) {

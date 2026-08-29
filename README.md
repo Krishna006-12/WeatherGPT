@@ -135,3 +135,10 @@ Postgres/Supabase is a **planned** phase (devices, watch list, alert log) — no
 ## Licence / data
 
 Upstream ToS apply (Open-Meteo, GDACS, etc.). IMD official APIs need separate authorisation.
+
+## Deploy & Git
+
+- **Live site only:** `npm run ship`  (build + `vercel --prod`)
+- **GitHub pe code:** alag se `git push` — dekh `GIT-AND-VERCEL.md`
+- Vercel **Git ko auto-update nahi karta**; dono connect karna optional hai (Vercel ↔ GitHub).
+

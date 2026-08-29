@@ -1,0 +1,277 @@
+{
+  "schema": "weathergpt.multi_model.v1",
+  "place": "Tokyo",
+  "multi_model_mode": "multi",
+  "primary_model_id": "best_match",
+  "ensemble": {
+    "meanTemp24h": 22.4,
+    "spreadC": 2.5,
+    "popMaxSpread": 12,
+    "modelCount": 5,
+    "modelsUsed": [
+      "best_match",
+      "ecmwf_ifs025",
+      "gfs_seamless",
+      "icon_seamless",
+      "ecmwf_aifs025_single"
+    ],
+    "agreementLevel": "moderate",
+    "agreementEn": "Moderate agreement \u2014 spread 2.5\u00b0C across 5 models; prefer blend for planning.",
+    "agreementHi": "\u092e\u0927\u094d\u092f\u092e \u0938\u0939\u092e\u0924\u093f \u2014 5 \u092e\u0949\u0921\u0932, \u092b\u0948\u0932\u093e\u0935 2.5\u00b0C; \u092a\u094d\u0932\u093e\u0928\u093f\u0902\u0917 \u0915\u0947 \u0932\u093f\u090f \u092c\u094d\u0932\u0947\u0902\u0921 \u092c\u0947\u0939\u0924\u0930\u0964",
+    "is_consensus": true,
+    "single_model_only": false,
+    "no_models": false
+  },
+  "summary": [
+    {
+      "id": "best_match",
+      "short": "Blend",
+      "label": "Best match (Open-Meteo blend)",
+      "available": true,
+      "error": null,
+      "temperature": 22.6,
+      "apparent_temperature": 26.5,
+      "precipitation_probability": 68,
+      "precipitation": 0.1,
+      "wind_speed": 3.7,
+      "wind_direction": 29,
+      "humidity": 91,
+      "cloud_cover": 60,
+      "weather_code": 51,
+      "source_model": "best_match",
+      "next24h": {
+        "temp_mean": 20.9,
+        "temp_max": 22.7,
+        "temp_min": 19.6,
+        "pop_max": 100,
+        "pop_mean": 61,
+        "rain_sum": 7.1,
+        "hours_with_data": 24,
+        "pop_hours_with_data": 24
+      },
+      "today": {
+        "date": "2026-08-29",
+        "temp_max": 25.1,
+        "temp_min": 19.6,
+        "precipitation_sum": 7.4,
+        "precipitation_probability_max": 100,
+        "wind_speed_max": 5.9,
+        "weather_code": 61
+      },
+      "meta": {
+        "model_name": "Best match (Open-Meteo blend)",
+        "model_run_time": null,
+        "forecast_timestamp": "2026-08-29T04:15",
+        "source": "Open-Meteo Forecast API",
+        "fetched_at": "2026-08-28T19:27:57.607Z",
+        "variable_notes": null
+      }
+    },
+    {
+      "id": "ecmwf_ifs025",
+      "short": "ECMWF IFS",
+      "label": "ECMWF IFS 0.25\u00b0",
+      "available": true,
+      "error": null,
+      "temperature": 24.5,
+      "apparent_temperature": 28.1,
+      "precipitation_probability": 68,
+      "precipitation": 0,
+      "wind_speed": 4.4,
+      "wind_direction": 81,
+      "humidity": 80,
+      "cloud_cover": 100,
+      "weather_code": 3,
+      "source_model": "ecmwf_ifs025",
+      "next24h": {
+        "temp_mean": 22.7,
+        "temp_max": 24.8,
+        "temp_min": 20.6,
+        "pop_max": 100,
+        "pop_mean": 61,
+        "rain_sum": 11.7,
+        "hours_with_data": 24,
+        "pop_hours_with_data": 24
+      },
+      "today": {
+        "date": "2026-08-29",
+        "temp_max": 27.4,
+        "temp_min": 20.8,
+        "precipitation_sum": 12.7,
+        "precipitation_probability_max": 100,
+        "wind_speed_max": 13.3,
+        "weather_code": 61
+      },
+      "meta": {
+        "model_name": "ECMWF IFS 0.25\u00b0",
+        "model_run_time": null,
+        "forecast_timestamp": "2026-08-29T04:15",
+        "source": "Open-Meteo Forecast API",
+        "fetched_at": "2026-08-28T19:27:57.608Z",
+        "variable_notes": null
+      }
+    },
+    {
+      "id": "gfs_seamless",
+      "short": "GFS",
+      "label": "GFS seamless (NCEP)",
+      "available": true,
+      "error": null,
+      "temperature": 25.4,
+      "apparent_temperature": 27.6,
+      "precipitation_probability": 80,
+      "precipitation": 0.1,
+      "wind_speed": 16.3,
+      "wind_direction": 41,
+      "humidity": 78,
+      "cloud_cover": 100,
+      "weather_code": 51,
+      "source_model": "gfs_seamless",
+      "next24h": {
+        "temp_mean": 22.7,
+        "temp_max": 25.6,
+        "temp_min": 21.6,
+        "pop_max": 97,
+        "pop_mean": 52,
+        "rain_sum": 12.5,
+        "hours_with_data": 24,
+        "pop_hours_with_data": 24
+      },
+      "today": {
+        "date": "2026-08-29",
+        "temp_max": 27.3,
+        "temp_min": 21.6,
+        "precipitation_sum": 12.9,
+        "precipitation_probability_max": 97,
+        "wind_speed_max": 25.2,
+        "weather_code": 81
+      },
+      "meta": {
+        "model_name": "GFS seamless (NCEP)",
+        "model_run_time": null,
+        "forecast_timestamp": "2026-08-29T04:15",
+        "source": "Open-Meteo Forecast API",
+        "fetched_at": "2026-08-28T19:27:57.608Z",
+        "variable_notes": null
+      }
+    },
+    {
+      "id": "icon_seamless",
+      "short": "ICON",
+      "label": "ICON seamless (DWD)",
+      "available": true,
+      "error": null,
+      "temperature": 23.7,
+      "apparent_temperature": 27.3,
+      "precipitation_probability": 80,
+      "precipitation": 0,
+      "wind_speed": 4.6,
+      "wind_direction": 51,
+      "humidity": 83,
+      "cloud_cover": 100,
+      "weather_code": 3,
+      "source_model": "icon_seamless",
+      "next24h": {
+        "temp_mean": 23.4,
+        "temp_max": 25.9,
+        "temp_min": 21.5,
+        "pop_max": 88,
+        "pop_mean": 44,
+        "rain_sum": 10.9,
+        "hours_with_data": 24,
+        "pop_hours_with_data": 24
+      },
+      "today": {
+        "date": "2026-08-29",
+        "temp_max": 26.3,
+        "temp_min": 21.5,
+        "precipitation_sum": 12.9,
+        "precipitation_probability_max": 88,
+        "wind_speed_max": 13.9,
+        "weather_code": 80
+      },
+      "meta": {
+        "model_name": "ICON seamless (DWD)",
+        "model_run_time": null,
+        "forecast_timestamp": "2026-08-29T04:15",
+        "source": "Open-Meteo Forecast API",
+        "fetched_at": "2026-08-28T19:27:57.609Z",
+        "variable_notes": null
+      }
+    },
+    {
+      "id": "ecmwf_aifs025_single",
+      "short": "AIFS",
+      "label": "ECMWF AIFS 0.25\u00b0 single",
+      "available": true,
+      "error": null,
+      "temperature": 24.7,
+      "apparent_temperature": 27.6,
+      "precipitation_probability": null,
+      "precipitation": 0.3,
+      "wind_speed": 9.7,
+      "wind_direction": 31,
+      "humidity": 80,
+      "cloud_cover": 100,
+      "weather_code": 55,
+      "source_model": "ecmwf_aifs025_single",
+      "next24h": {
+        "temp_mean": 22.4,
+        "temp_max": 24.8,
+        "temp_min": 20.7,
+        "pop_max": null,
+        "pop_mean": null,
+        "rain_sum": 16.2,
+        "hours_with_data": 24,
+        "pop_hours_with_data": 0
+      },
+      "today": {
+        "date": "2026-08-29",
+        "temp_max": 27.1,
+        "temp_min": 20.9,
+        "precipitation_sum": 15.3,
+        "precipitation_probability_max": null,
+        "wind_speed_max": 15.5,
+        "weather_code": 55
+      },
+      "meta": {
+        "model_name": "ECMWF AIFS 0.25\u00b0 single",
+        "model_run_time": null,
+        "forecast_timestamp": "2026-08-29T04:15",
+        "source": "Open-Meteo Forecast API",
+        "fetched_at": "2026-08-28T19:27:57.609Z",
+        "variable_notes": [
+          "precipitation_probability unavailable for this model run (left null \u2014 not estimated)"
+        ]
+      }
+    }
+  ],
+  "primary_observation": {
+    "location": {
+      "name": "Tokyo",
+      "lat": 35.7,
+      "lon": 139.625,
+      "timezone": "Asia/Tokyo",
+      "elevation_m": 37
+    },
+    "timestamp": "2026-08-29T04:15",
+    "temperature": 22.6,
+    "apparent_temperature": 26.5,
+    "precipitation_probability": 68,
+    "precipitation": 0.1,
+    "wind_speed": 3.7,
+    "wind_direction": 29,
+    "humidity": 91,
+    "cloud_cover": 60,
+    "weather_code": 51,
+    "pressure_msl": 1010.8,
+    "source_model": "best_match",
+    "meta": {
+      "model_name": "Best match (Open-Meteo blend)",
+      "model_id": "best_match",
+      "provider": "Open-Meteo",
+      "forecast_timestamp": "2026-08-29T04:15",
+      "model_run_time": null,
+      "source": "Open-Meteo Forecast API",
+      "generationtime_ms": 0.3116130828857422,
+      "fetched_at

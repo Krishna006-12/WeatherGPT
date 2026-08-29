@@ -68,7 +68,7 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-weather-runtime',
-              networkTimeoutSeconds: 8,
+              networkTimeoutSeconds: 6,
               expiration: { maxEntries: 24, maxAgeSeconds: 60 * 60 * 6 },
               cacheableResponse: { statuses: [0, 200] },
             },
@@ -88,6 +88,16 @@ export default defineConfig({
               cacheName: 'open-meteo-forecast',
               networkTimeoutSeconds: 10,
               expiration: { maxEntries: 32, maxAgeSeconds: 60 * 60 * 6 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/air-quality-api\.open-meteo\.com\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'open-meteo-aqi',
+              networkTimeoutSeconds: 6,
+              expiration: { maxEntries: 24, maxAgeSeconds: 60 * 60 * 6 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },

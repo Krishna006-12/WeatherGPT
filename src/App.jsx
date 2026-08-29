@@ -55,6 +55,20 @@ function welcomeMessageSafe(wx, lang) {
   }
 }
 import { fetchAQI } from './services/aqi'
+import { setInitialPaintMs, perfMark, perfTime } from './services/perf'
+import {
+  deriveDataStatus,
+  getNetworkSnapshot,
+  shouldSkipPrefetch,
+  shouldDeferHeavyUI,
+} from './services/networkStatus'
+import {
+  postChatApi,
+  classifyChatError,
+  structureAssistantResult,
+  progressiveReveal,
+} from './services/chatClient'
+import DataStatusPill, { DataStatusBanner } from './components/DataStatusPill'
 import {
   loadPrefs,
   savePrefs,
@@ -244,17 +258,42 @@ export default function App() {
   const [loadingWx, setLoadingWx] = useState(true)
   const [messages, setMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
+  /** Pipeline stage label key — never fake % */
+  const [chatStage, setChatStage] = useState(null)
+  /** Message id currently progressive-revealing (client-side, after full payload) */
+  const [streamingId, setStreamingId] = useState(null)
   /** Last crop discussed — follow-ups like "will rain affect it?" */
   const [cropContext, setCropContext] = useState(null)
   const [showAbout, setShowAbout] = useState(false)
   const [minsAgo, setMinsAgo] = useState(1)
+  const [netOnline, setNetOnline] = useState(
+    () => typeof navigator === 'undefined' || navigator.onLine !== false,
+  )
+  const [netSnap, setNetSnap] = useState(() => getNetworkSnapshot())
+  const [wxUpdating, setWxUpdating] = useState(false)
   const [recentCities, setRecentCities] = useState(() => loadRecent())
   const [showOnboard, setShowOnboard] = useState(() => !loadOnboarded())
   const [toast, setToast] = useState(null)
   const cityLoadGen = useRef(0)
+  /** Abort in-flight weather/AQI when user switches city rapidly */
+  const loadAbortRef = useRef(null)
+  /** Abort in-flight chat request + progressive reveal */
+  const chatAbortRef = useRef(null)
+  const chatReqIdRef = useRef(0)
+  const paintMarked = useRef(false)
 
   const city = cityObj || getCity(cityId) || CITIES.kanpur
   const units = prefs.units || 'C'
+
+  const dataStatus = useMemo(
+    () =>
+      deriveDataStatus(weather, {
+        online: netOnline,
+        updating: wxUpdating || loadingWx,
+        loading: loadingWx && !weather,
+      }),
+    [weather, netOnline, wxUpdating, loadingWx],
+  )
 
   const showToast = useCallback((msg, kind = 'info') => {
     setToast({ msg, kind, id: Date.now() })
@@ -265,6 +304,25 @@ export default function App() {
     const t = setTimeout(() => setToast(null), 3200)
     return () => clearTimeout(t)
   }, [toast])
+
+  // Online / offline / connection changes
+  useEffect(() => {
+    const sync = () => {
+      const snap = getNetworkSnapshot()
+      setNetSnap(snap)
+      setNetOnline(snap.online)
+    }
+    sync()
+    window.addEventListener('online', sync)
+    window.addEventListener('offline', sync)
+    const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection
+    c?.addEventListener?.('change', sync)
+    return () => {
+      window.removeEventListener('online', sync)
+      window.removeEventListener('offline', sync)
+      c?.removeEventListener?.('change', sync)
+    }
+  }, [])
 
   // Dynamic document title for SEO / tab label
   useEffect(() => {
@@ -311,16 +369,6 @@ export default function App() {
     })
   }, [])
 
-  const loadAqi = useCallback(async (c) => {
-    if (!c?.lat) return
-    try {
-      const a = await fetchAQI(c.lat, c.lon)
-      setAqi(a)
-    } catch {
-      setAqi(null)
-    }
-  }, [])
-
   const loadCity = useCallback(
     async (idOrCity, { resetChat = false, force = false } = {}) => {
       const resolved =
@@ -331,18 +379,28 @@ export default function App() {
       const gen = ++cityLoadGen.current
       const stillMine = () => cityLoadGen.current === gen
 
+      // Cancel previous city fetch (rapid switch)
+      try {
+        loadAbortRef.current?.abort()
+      } catch {
+        /* */
+      }
+      const ac = new AbortController()
+      loadAbortRef.current = ac
+      const { signal } = ac
+
       // Instant chrome switch — header / shell show Dubai immediately
       setCityId(resolved.id)
       setCityObj(resolved)
       pushRecent(resolved)
       setTab('home')
+      perfMark('load_city', { id: resolved.id, force: !!force })
 
-      // Memory hit → paint weather now, soft-refresh in background
+      // Memory hit → paint weather now; soft-refresh wx+AQI in parallel
       const cached = !force ? weatherMap[resolved.id] : null
       if (cached?.current) {
         setWeather(cached)
         setLoadingWx(false)
-        loadAqi(resolved)
         if (resetChat) {
           const hist = loadChatHistory(resolved.id)
           setMessages(
@@ -358,13 +416,24 @@ export default function App() {
                 ],
           )
         }
-        fetchWeather(resolved, { force: false })
-          .then((wx) => {
-            if (!stillMine()) return
+        // Independent: weather soft refresh + AQI (Promise.all)
+        setWxUpdating(true)
+        const aqTask = shouldDeferHeavyUI(getNetworkSnapshot())
+          ? Promise.resolve(null)
+          : fetchAQI(resolved.lat, resolved.lon, { signal }).catch(() => null)
+        Promise.all([
+          fetchWeather(resolved, { force: false, signal }).catch(() => null),
+          aqTask,
+        ]).then(([wx, a]) => {
+          if (!stillMine() || signal.aborted) return
+          if (wx?.current) {
             setWeather(wx)
             setWeatherMap((m) => ({ ...m, [resolved.id]: wx }))
-          })
-          .catch(() => {})
+          }
+          if (a) setAqi(a)
+        }).finally(() => {
+          if (stillMine()) setWxUpdating(false)
+        })
         return
       }
 
@@ -376,11 +445,15 @@ export default function App() {
 
       try {
         if (force) clearCache(resolved.id)
-        const wx = await fetchWeather(resolved, { force })
-        if (!stillMine()) return
+        // Weather + AQI are independent — fetch in parallel
+        const [wx, a] = await Promise.all([
+          fetchWeather(resolved, { force, signal }),
+          fetchAQI(resolved.lat, resolved.lon, { signal }).catch(() => null),
+        ])
+        if (!stillMine() || signal.aborted) return
         setWeather(wx)
         setWeatherMap((m) => ({ ...m, [resolved.id]: wx }))
-        loadAqi(resolved)
+        if (a) setAqi(a)
         if (resetChat) {
           const hist = loadChatHistory(resolved.id)
           setMessages(
@@ -396,8 +469,8 @@ export default function App() {
                 ],
           )
         }
-      } catch {
-        if (!stillMine()) return
+      } catch (e) {
+        if (!stillMine() || signal.aborted || /abort/i.test(String(e?.message || ''))) return
         showToast(
           lang === 'hi'
             ? 'मौसम लोड नहीं हुआ — नेटवर्क जाँचें या दोबारा कोशिश करें'
@@ -408,39 +481,74 @@ export default function App() {
         if (stillMine()) setLoadingWx(false)
       }
     },
-    [lang, pushRecent, loadAqi, showToast, weatherMap],
+    [lang, pushRecent, showToast, weatherMap],
   )
 
   const refreshLive = useCallback(async () => {
     if (!city) return
-    setLoadingWx(true)
+    const gen = ++cityLoadGen.current
     try {
+      loadAbortRef.current?.abort()
+    } catch {
+      /* */
+    }
+    const ac = new AbortController()
+    loadAbortRef.current = ac
+    setLoadingWx(true)
+    setWxUpdating(true)
+    perfMark('refresh_live', { id: city.id })
+    try {
+      // Keep showing last pack while updating — clearCache only for force path
       clearCache(city.id)
-      const wx = await fetchWeather(city, { force: true })
+      const tasks = [fetchWeather(city, { force: true, signal: ac.signal })]
+      // Weak net: skip AQI on manual refresh optional? keep AQI but it has own cache
+      if (!shouldDeferHeavyUI(getNetworkSnapshot())) {
+        tasks.push(fetchAQI(city.lat, city.lon, { force: true, signal: ac.signal }).catch(() => null))
+      } else {
+        tasks.push(Promise.resolve(null))
+      }
+      const [wx, a] = await Promise.all(tasks)
+      if (cityLoadGen.current !== gen || ac.signal.aborted) return
       setWeather(wx)
       setWeatherMap((m) => ({ ...m, [city.id]: wx }))
-      await loadAqi(city)
-    } catch {
+      if (a) setAqi(a)
+    } catch (e) {
+      if (ac.signal.aborted || /abort/i.test(String(e?.message || ''))) return
       showToast(
         lang === 'hi' ? 'रिफ़्रेश असफल — कैश/ऑफ़लाइन देखें' : 'Refresh failed — showing last good if any',
         'err'
       )
     } finally {
-      setLoadingWx(false)
+      if (cityLoadGen.current === gen) {
+        setLoadingWx(false)
+        setWxUpdating(false)
+      }
     }
-  }, [city, loadAqi, showToast, lang])
+  }, [city, showToast, lang])
 
   useEffect(() => {
     let cancelled = false
+    const t0 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()
     const home = CITIES[prefs.homeCityId] || CITIES.kanpur
+    const ac = new AbortController()
+    loadAbortRef.current = ac
     ;(async () => {
       setLoadingWx(true)
-      const wx = await fetchWeather(home)
-      if (cancelled) return
+      perfMark('boot_start', { home: home.id })
+      // Independent weather + AQI on cold start (AQI deferred on 2g/save-data)
+      const bootNet = getNetworkSnapshot()
+      const [wx, a] = await Promise.all([
+        fetchWeather(home, { signal: ac.signal }),
+        shouldDeferHeavyUI(bootNet)
+          ? Promise.resolve(null)
+          : fetchAQI(home.lat, home.lon, { signal: ac.signal }).catch(() => null),
+      ])
+      if (cancelled || ac.signal.aborted) return
       setCityId(home.id)
       setCityObj(home)
       setWeather(wx)
       setWeatherMap({ [home.id]: wx })
+      if (a) setAqi(a)
       const hist = loadChatHistory(home.id)
       if (hist?.length) {
         setMessages(hist)
@@ -450,13 +558,25 @@ export default function App() {
       }
       setLoadingWx(false)
       pushRecent(home)
-      loadAqi(home)
+      if (!paintMarked.current) {
+        paintMarked.current = true
+        const ms = Math.round(
+          (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) - t0,
+        )
+        setInitialPaintMs(ms)
+        perfMark('initial_weather_paint', { ms, home: home.id })
+      }
 
       // Defer multi-city prefetch — was 4 extra Open-Meteo calls on every cold start
       // Prefetch only after first paint + idle (Cities tab benefits later)
       const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 2500))
       idle(() => {
         if (cancelled) return
+        // Weak / offline / save-data: skip multi-city prefetch — preserve core only
+        if (shouldSkipPrefetch(getNetworkSnapshot())) {
+          perfMark('prefetch_skipped', { reason: 'weak-or-offline' })
+          return
+        }
         for (const id of ['lucknow', 'delhi', 'dubai']) {
           if (id === home.id) continue
           fetchWeather(id)
@@ -469,17 +589,25 @@ export default function App() {
     })()
     return () => {
       cancelled = true
+      try {
+        ac.abort()
+      } catch {
+        /* */
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     if (!weather) return
-    const tick = () => setMinsAgo(Math.max(1, Math.round((Date.now() - weather.fetchedAt) / 60000)))
+    const tick = () => {
+      const age = Date.now() - (weather.fetchedAt || Date.now())
+      setMinsAgo(Math.max(0, Math.round(age / 60000)))
+    }
     tick()
-    const id = setInterval(tick, 30000)
+    const id = setInterval(tick, 15000)
     return () => clearInterval(id)
-  }, [weather])
+  }, [weather, weather?.fetchedAt])
 
   useEffect(() => {
     if (cityId && messages.length) saveChatHistory(cityId, messages)
@@ -540,8 +668,22 @@ export default function App() {
     [pushRecent]
   )
 
+  const cancelChat = useCallback(() => {
+    try {
+      chatAbortRef.current?.abort()
+    } catch {
+      /* */
+    }
+    chatReqIdRef.current += 1
+    setChatLoading(false)
+    setChatStage(null)
+    setStreamingId(null)
+  }, [])
+
   const onSend = async (text) => {
     const raw = (text || '').trim()
+    if (!raw) return
+    if (chatLoading) return // dedupe — in-flight request blocks new sends
     if (/^(open alerts|अलर्ट खोलो)$/i.test(raw)) {
       setTab('alerts')
       return
@@ -559,75 +701,83 @@ export default function App() {
       return
     }
 
+    // Cancel any prior in-flight chat (safety) then start fresh
+    try {
+      chatAbortRef.current?.abort()
+    } catch {
+      /* */
+    }
+    const ac = new AbortController()
+    chatAbortRef.current = ac
+    const reqId = ++chatReqIdRef.current
+    const stillMine = () => chatReqIdRef.current === reqId && !ac.signal.aborted
+
     const userMsg = { id: Date.now(), role: 'user', text: raw, timestamp: Date.now() }
     setMessages((m) => [...m, userMsg])
     setChatLoading(true)
+    setChatStage(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'classify')
+    setStreamingId(null)
+
+    const pushAssistant = async (result, { errMeta = null } = {}) => {
+      if (!stillMine()) return
+      const structured = structureAssistantResult(result || {}, lang)
+      const fullText = structured.text || result?.text || ''
+      const asstId = Date.now() + 1
+      const base = {
+        id: asstId,
+        role: 'assistant',
+        ...structured,
+        text: '', // progressive fill
+        timestamp: Date.now(),
+        errorCode: errMeta?.code || null,
+      }
+      // Short answers: skip progressive reveal for snappy UX
+      const skipReveal = fullText.length < 80 || errMeta?.code === 'cancelled'
+      if (skipReveal) {
+        setMessages((m) => [...m, { ...base, text: fullText }])
+        setStreamingId(null)
+        return
+      }
+      setChatStage('reveal')
+      setMessages((m) => [...m, base])
+      setStreamingId(asstId)
+      try {
+        for await (const partial of progressiveReveal(fullText, {
+          signal: ac.signal,
+          chunkMs: 12,
+          charsPerTick: 18,
+        })) {
+          if (!stillMine()) break
+          setMessages((m) => m.map((msg) => (msg.id === asstId ? { ...msg, text: partial } : msg)))
+        }
+      } finally {
+        // Always land on full text (even if cancel mid-reveal) — never leave a half answer
+        setMessages((m) => m.map((msg) => (msg.id === asstId ? { ...msg, text: fullText } : msg)))
+        setStreamingId((id) => (id === asstId ? null : id))
+      }
+    }
 
     try {
-      // Load AI engine only when user actually chats (keeps home paint fast)
       const ai = await loadAi()
-      const {
-        chat,
-        resolveMentionedCity,
-        classifyUserQuery,
-        isCropRoute,
-      } = ai
+      if (!stillMine()) return
+      const { chat, resolveMentionedCity, classifyUserQuery, isCropRoute } = ai
 
-      /** Timed POST to /api/chat — never hang forever on Vercel 504 */
-      const postChatApi = async (payload, ms = 22000) => {
-        const ac = new AbortController()
-        const t = setTimeout(() => ac.abort(), ms)
-        try {
-          const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            body: JSON.stringify(payload),
-            signal: ac.signal,
-          })
-          const textBody = await res.text()
-          if (textBody.trimStart().startsWith('<')) {
-            return { ok: false, error: 'HTML from /api/chat (SPA fallback — api missing)' }
-          }
-          let j
-          try {
-            j = JSON.parse(textBody)
-          } catch {
-            return { ok: false, error: 'Bad JSON from /api/chat', status: res.status }
-          }
-          // Vercel 504 body: { error: { code: "504", message: "..." } }
-          if (!res.ok) {
-            const errMsg =
-              (typeof j.error === 'string' && j.error) ||
-              j.error?.message ||
-              j.message ||
-              `HTTP ${res.status}`
-            return { ok: false, error: errMsg, status: res.status, raw: j }
-          }
-          return j
-        } catch (e) {
-          const msg =
-            e?.name === 'AbortError' ? `timeout ${ms}ms` : e?.message || String(e)
-          return { ok: false, error: msg }
-        } finally {
-          clearTimeout(t)
-        }
-      }
-
-      // ── 1) CLASSIFY before any geocode / weather / recent ──
+      setChatStage('classify')
       const classified = classifyUserQuery(raw, cropContext)
       const cropRoute = isCropRoute(classified)
+      if (!stillMine()) return
 
       let targetCity = city
       let targetWx = weather
       let placeResolved = false
 
-      // ── 2) LOCATION RESOLUTION (never pass crop name) ──
+      // ── LOCATION RESOLUTION (never pass crop name) ──
       if (cropRoute) {
-        // Crop-only: stay on current city — DO NOT geocode raw query
-        // Crop+location: resolve ONLY classified.locationQuery (e.g. Kanpur)
         if (classified.locationQuery) {
+          setChatStage('weather')
           try {
             const mentioned = await resolveMentionedCity(raw, null)
+            if (!stillMine()) return
             if (
               mentioned?.lat != null &&
               mentioned?.lon != null &&
@@ -655,23 +805,18 @@ export default function App() {
             console.warn('crop+place resolve failed', err)
           }
         }
-        // else: crop-only → targetCity stays current location (Kanpur etc.)
-      } else {
-        // Normal weather / place flow — existing behaviour
+      } else if (!isNoisePlaceQuery(raw)) {
+        setChatStage('weather')
         try {
-          // Greetings / chat noise must NEVER geocode into Recent (e.g. "hlo" → Hlotse)
-          if (isNoisePlaceQuery(raw)) {
-            /* stay on current city */
-          } else {
           const mentioned = await resolveMentionedCity(raw, null)
+          if (!stillMine()) return
           if (mentioned?.lat != null && mentioned?.lon != null) {
-            // Guard: never accept a "place" that is actually a crop / noise geocode
             if (
               detectCrop(mentioned.name || '') ||
               isCropQuestion(mentioned.name || '') ||
               !isValidRecentCity(mentioned, { explicitPlace: true })
             ) {
-              /* ignore bogus crop-as-city or fuzzy junk */
+              /* ignore bogus */
             } else {
               const sameHome = mentioned.id && city?.id && mentioned.id === city.id
               const sameCoords =
@@ -692,80 +837,101 @@ export default function App() {
               }
             }
           }
-          } // end non-noise place resolve
         } catch (err) {
           console.warn('place resolve failed', err)
         }
       }
 
+      if (!stillMine()) return
       let result = null
+      let lastApiErr = null
 
-      // ── 3) CROP ROUTE: never geocode crop as place. Prefer Gemini phrasing
-      //    grounded on CURRENT city weather + crop hint; else client Crop Intelligence.
+      const callApi = async (payload) => {
+        setChatStage(cropRoute ? 'crop' : 'forecast')
+        try {
+          const j = await postChatApi(payload, { signal: ac.signal })
+          if (j?.ms != null) {
+            try {
+              perfTime('chat_ms', j.ms)
+              perfMark('chat_api', { ms: j.ms, status: j.status || 200 })
+            } catch {
+              /* */
+            }
+          }
+          if (j && j.ok === false) {
+            lastApiErr = j
+            return j
+          }
+          setChatStage(j?.mode?.startsWith?.('llm') ? 'ai' : 'rules')
+          return j
+        } catch (e) {
+          if (e?.name === 'AbortError') throw e
+          lastApiErr = { ok: false, error: e?.message || String(e) }
+          return lastApiErr
+        }
+      }
+
+      // ── CROP ROUTE ──
       if (cropRoute) {
         const cropId = classified.crop?.id || classified.crop?.name_en
         const placeForCrop = targetCity || city
         if (placeForCrop?.lat != null && placeForCrop?.lon != null) {
-          try {
-            const j = await postChatApi({
-              message: raw,
-              lat: placeForCrop.lat,
-              lon: placeForCrop.lon,
-              name: placeForCrop.name || city?.name || 'Area',
-              lang,
-              crop: cropId || undefined,
-            })
-            if (j.ok && j.answer) {
-              const placeName = j.place?.name || placeForCrop.name
-              const isLlm =
-                j.mode === 'llm_grounded' ||
-                /gemini|groq|openrouter|openai|llama|qwen|gemma/i.test(String(j.provider || ''))
-              if (isLlm && !detectCrop(placeName || '')) {
-                result = {
-                  text: j.answer,
-                  type: 'crop',
-                  cropId: cropId || null,
-                  confidence: 0.9,
-                  cityId: placeForCrop.id || city?.id,
-                  source: `${
-                    /^groq/i.test(String(j.provider || ''))
-                      ? 'Groq'
-                      : /^openrouter/i.test(String(j.provider || ''))
-                        ? 'OpenRouter'
-                        : /gemini/i.test(String(j.provider || ''))
-                          ? 'Google Gemini'
-                          : 'AI'
-                  }+tools · ${j.provider || 'llm'} · ${placeName}`,
-                  mode: j.mode || 'llm_grounded',
-                  provider: j.provider,
-                  citations: j.citations,
-                }
-              } else if (
-                j.mode === 'deterministic_grounded' &&
-                !detectCrop(placeName || '')
-              ) {
-                result = {
-                  text: j.answer,
-                  type: 'crop',
-                  cropId: cropId || null,
-                  confidence: 0.82,
-                  cityId: placeForCrop.id || city?.id,
-                  source: j.llmError
-                    ? `Rules+tools · ${placeName} (Gemini: ${String(j.llmError).slice(0, 80)})`
-                    : `Grounded rules+tools · ${placeName}`,
-                  mode: j.mode,
-                  provider: j.provider,
-                }
+          const j = await callApi({
+            message: raw,
+            lat: placeForCrop.lat,
+            lon: placeForCrop.lon,
+            name: placeForCrop.name || city?.name || 'Area',
+            lang,
+            crop: cropId || undefined,
+          })
+          if (!stillMine()) return
+          if (j?.ok && j.answer) {
+            const placeName = j.place?.name || placeForCrop.name
+            const isLlm =
+              j.mode === 'llm_grounded' ||
+              /gemini|groq|openrouter|openai|llama|qwen|gemma/i.test(String(j.provider || ''))
+            if (isLlm && !detectCrop(placeName || '')) {
+              result = {
+                text: j.answer,
+                type: 'crop',
+                cropId: cropId || null,
+                confidence: 0.9,
+                cityId: placeForCrop.id || city?.id,
+                source: `${
+                  /^groq/i.test(String(j.provider || ''))
+                    ? 'Groq'
+                    : /^openrouter/i.test(String(j.provider || ''))
+                      ? 'OpenRouter'
+                      : /gemini/i.test(String(j.provider || ''))
+                        ? 'Google Gemini'
+                        : 'AI'
+                }+tools · ${j.provider || 'llm'} · ${placeName}`,
+                mode: j.mode || 'llm_grounded',
+                provider: j.provider,
+                citations: j.citations,
               }
-            } else if (j.error) {
-              console.warn('crop /api/chat', j.error, j.status)
+            } else if (j.mode === 'deterministic_grounded' && !detectCrop(placeName || '')) {
+              result = {
+                text: j.answer,
+                type: 'crop',
+                cropId: cropId || null,
+                confidence: 0.82,
+                cityId: placeForCrop.id || city?.id,
+                source: j.llmError
+                  ? `Rules+tools · ${placeName} (Gemini: ${String(j.llmError).slice(0, 80)})`
+                  : `Grounded rules+tools · ${placeName}`,
+                mode: j.mode,
+                provider: j.provider,
+              }
             }
-          } catch (err) {
-            console.warn('crop /api/chat failed', err)
+          } else if (j?.error) {
+            console.warn('crop /api/chat', j.error, j.status)
           }
         }
 
         if (!result) {
+          if (!stillMine()) return
+          setChatStage('rules')
           result = await chat(raw, {
             weather: targetWx || weather,
             lang,
@@ -773,7 +939,6 @@ export default function App() {
             cropContext,
             classified,
           })
-          // Hard guarantee: type crop when classifier says crop
           if (result && result.type !== 'crop' && classified.crop) {
             result = await chat(classified.crop.name_en || classified.crop.id, {
               weather: targetWx || weather,
@@ -783,12 +948,11 @@ export default function App() {
               classified,
             })
           }
-          // Label client template so it is never confused with Gemini
           if (result && result.type === 'crop') {
             result.source =
-              (lang === 'hi'
+              lang === 'hi'
                 ? 'क्लाइंट नियम + Open-Meteo (/api/chat fail ya timeout)'
-                : 'Client rules + Open-Meteo (/api/chat failed or timed out)')
+                : 'Client rules + Open-Meteo (/api/chat failed or timed out)'
           }
         }
         if (result?.type === 'crop' && (result.cropId || cropId)) {
@@ -797,80 +961,76 @@ export default function App() {
             cityId: result.cityId || targetCity?.id || city?.id,
           })
         }
-        // NEVER push recent for crop routes
       } else {
-        // ── 4) NORMAL weather: try Gemini-backed /api/chat first (tool-grounded),
-        //    then fall back to client deterministic brain.
+        // ── NORMAL weather ──
         {
-          try {
-            // Final guard: never send crop name as place name to API
-            const apiName = detectCrop(targetCity?.name || '')
-              ? city?.name || 'Area'
-              : targetCity?.name || city?.name || 'Area'
-            const j = await postChatApi({
-              message: raw,
-              lat: targetCity?.lat ?? city?.lat,
-              lon: targetCity?.lon ?? city?.lon,
-              name: apiName,
-              lang,
-            })
-            if (j.ok && j.answer) {
-              const placeName = j.place?.name || apiName
-              const route = j.route || (j.mode === 'llm_general' ? 'general' : 'weather')
-              // General knowledge answers have no crop-as-city risk
-              if (route === 'general' || !detectCrop(placeName || '')) {
-                const prov = String(j.provider || '')
-                const brand = /^groq/i.test(prov)
-                  ? 'Groq'
-                  : /^openrouter/i.test(prov)
-                    ? 'OpenRouter'
-                    : /gemini/i.test(prov)
-                      ? 'Google Gemini'
-                      : /^openai/i.test(prov)
-                        ? 'OpenAI'
-                        : 'AI'
-                let source
-                if (j.mode === 'llm_general' || (route === 'general' && j.mode?.startsWith?.('llm'))) {
-                  source = `${brand} · general · ${prov || brand}`
-                } else if (j.mode === 'llm_grounded') {
-                  source = `${brand}+tools · ${prov} · ${placeName}`
-                } else if (j.llmError) {
-                  source = /quota|QUOTA|exceeded your current/i.test(String(j.llmError || ''))
-                    ? `Open-Meteo free · live tools (AI quota full — add GROQ_API_KEY / OPENROUTER_API_KEY)`
-                    : `Rules+tools · ${placeName || '—'} (AI: ${String(j.llmError).slice(0, 70)})`
-                } else if (route === 'general') {
-                  source = `General rules · (no AI key)`
-                } else {
-                  source = `Grounded rules+tools · ${placeName}`
-                }
-                result = {
-                  text: j.answer,
-                  type:
-                    j.mode === 'llm_general'
-                      ? 'general'
-                      : j.mode === 'llm_grounded'
-                        ? 'llm'
-                        : 'general',
-                  confidence: j.mode === 'llm_grounded' || j.mode === 'llm_general' ? 0.9 : 0.85,
-                  cityId: route === 'general' ? undefined : targetCity.id,
-                  source,
-                  mode: j.mode,
-                  provider: j.provider,
-                  route,
-                  citations: j.citations,
-                  llmError: j.llmError,
-                }
+          const apiName = detectCrop(targetCity?.name || '')
+            ? city?.name || 'Area'
+            : targetCity?.name || city?.name || 'Area'
+          const j = await callApi({
+            message: raw,
+            lat: targetCity?.lat ?? city?.lat,
+            lon: targetCity?.lon ?? city?.lon,
+            name: apiName,
+            lang,
+          })
+          if (!stillMine()) return
+          if (j?.ok && j.answer) {
+            const placeName = j.place?.name || apiName
+            const route = j.route || (j.mode === 'llm_general' ? 'general' : 'weather')
+            if (route === 'general' || !detectCrop(placeName || '')) {
+              const prov = String(j.provider || '')
+              const brand = /^groq/i.test(prov)
+                ? 'Groq'
+                : /^openrouter/i.test(prov)
+                  ? 'OpenRouter'
+                  : /gemini/i.test(prov)
+                    ? 'Google Gemini'
+                    : /^openai/i.test(prov)
+                      ? 'OpenAI'
+                      : 'AI'
+              let source
+              if (j.mode === 'llm_general' || (route === 'general' && j.mode?.startsWith?.('llm'))) {
+                source = `${brand} · general · ${prov || brand}`
+              } else if (j.mode === 'llm_grounded') {
+                source = `${brand}+tools · ${prov} · ${placeName}`
+              } else if (j.llmError) {
+                source = /quota|QUOTA|exceeded your current/i.test(String(j.llmError || ''))
+                  ? `Open-Meteo free · live tools (AI quota full — add GROQ_API_KEY / OPENROUTER_API_KEY)`
+                  : `Rules+tools · ${placeName || '—'} (AI: ${String(j.llmError).slice(0, 70)})`
+              } else if (route === 'general') {
+                source = `General rules · (no AI key)`
+              } else {
+                source = `Grounded rules+tools · ${placeName}`
               }
-            } else if (j.error) {
-              console.warn('weather /api/chat', j.error, j.status)
+              result = {
+                text: j.answer,
+                type:
+                  j.mode === 'llm_general'
+                    ? 'general'
+                    : j.mode === 'llm_grounded'
+                      ? 'llm'
+                      : 'general',
+                confidence: j.mode === 'llm_grounded' || j.mode === 'llm_general' ? 0.9 : 0.85,
+                cityId: route === 'general' ? undefined : targetCity.id,
+                source,
+                mode: j.mode,
+                provider: j.provider,
+                route,
+                citations: j.citations,
+                llmError: j.llmError,
+              }
             }
-          } catch (err) {
-            console.warn('weather /api/chat failed', err)
+          } else if (j?.error) {
+            console.warn('weather /api/chat', j.error, j.status)
           }
         }
 
         if (!result) {
-          await new Promise((r) => setTimeout(r, 80 + Math.random() * 80))
+          if (!stillMine()) return
+          setChatStage('rules')
+          await new Promise((r) => setTimeout(r, 60))
+          if (!stillMine()) return
           result = await chat(raw, {
             weather: targetWx || weather,
             lang,
@@ -885,8 +1045,9 @@ export default function App() {
                 ? ' · क्लाइंट fallback (/api/chat fail ya 504 — api/chat.js redeploy karo)'
                 : ' · client fallback (/api/chat failed or 504 timeout — redeploy api/chat.js)')
           }
-          if (!result.cityId && targetCity?.id) result.cityId = targetCity.id
+          if (result && !result.cityId && targetCity?.id) result.cityId = targetCity.id
           if (
+            result &&
             placeResolved &&
             targetCity &&
             result.cityId &&
@@ -903,6 +1064,7 @@ export default function App() {
         }
 
         if (
+          result &&
           placeResolved &&
           targetCity?.name &&
           result.source &&
@@ -911,42 +1073,76 @@ export default function App() {
           result.source = `${result.source} · ${targetCity.name}`
         }
 
-        // ── 5) Recent: ONLY when user named a real city/country (never chat noise)
         if (
           placeResolved &&
           targetCity &&
+          result &&
           result.type !== 'crop' &&
           !result.cropId &&
           !cropRoute
         ) {
           const other = getCity(result.cityId) || targetCity
-          if (
-            other &&
-            other.id !== city?.id &&
-            isValidRecentCity(other, { explicitPlace: true })
-          ) {
+          if (other && other.id !== city?.id && isValidRecentCity(other, { explicitPlace: true })) {
             pushRecent(other, { explicitPlace: true })
           }
         }
       }
 
-      setMessages((m) => [
-        ...m,
-        { id: Date.now() + 1, role: 'assistant', ...result, timestamp: Date.now() },
-      ])
-    } catch {
-      setMessages((m) => [
-        ...m,
+      if (!stillMine()) return
+
+      if (!result) {
+        const classified_err = classifyChatError(
+          lastApiErr?.error ? new Error(lastApiErr.error) : new Error('empty'),
+          lastApiErr,
+        )
+        await pushAssistant(
+          {
+            text: lang === 'hi' ? classified_err.hi : classified_err.en,
+            type: 'general',
+            confidence: 0.3,
+            source: classified_err.code,
+          },
+          { errMeta: classified_err },
+        )
+      } else {
+        await pushAssistant(result)
+      }
+    } catch (e) {
+      if (!stillMine()) {
+        // cancelled mid-flight — optional soft notice only if user cancelled after send
+        if (e?.name === 'AbortError' || /abort|cancel/i.test(String(e?.message || ''))) {
+          return
+        }
+        return
+      }
+      const classified_err = classifyChatError(e)
+      if (classified_err.code === 'cancelled') {
+        await pushAssistant(
+          {
+            text: lang === 'hi' ? classified_err.hi : classified_err.en,
+            type: 'general',
+            confidence: 0,
+            source: 'cancelled',
+          },
+          { errMeta: classified_err },
+        )
+        return
+      }
+      await pushAssistant(
         {
-          id: Date.now() + 1,
-          role: 'assistant',
-          text: lang === 'hi' ? 'क्षमा करें, कुछ गड़बड़ हुई।' : 'Sorry, something went wrong.',
+          text: lang === 'hi' ? classified_err.hi : classified_err.en,
           type: 'general',
-          timestamp: Date.now(),
+          confidence: 0.25,
+          source: classified_err.code,
         },
-      ])
+        { errMeta: classified_err },
+      )
     } finally {
-      setChatLoading(false)
+      if (chatReqIdRef.current === reqId) {
+        setChatLoading(false)
+        setChatStage(null)
+        setStreamingId(null)
+      }
     }
   }
 
@@ -1173,16 +1369,7 @@ export default function App() {
                       {tr(lang, 'appName')}
                     </h1>
                     <p className="text-[10px] text-white/60 mt-0.5 truncate font-medium flex items-center gap-1.5">
-                      {weather?.live ? (
-                        <>
-                          <span className="live-dot" /> LIVE
-                        </>
-                      ) : (
-                        <>
-                          <span className="live-dot-off" /> OFFLINE
-                        </>
-                      )}
-                      <span className="text-white/40">· {minsAgo}m</span>
+                      <DataStatusPill status={dataStatus} lang={lang} compact />
                     </p>
                   </div>
                 </div>
@@ -1298,17 +1485,12 @@ export default function App() {
                           e.stopPropagation()
                           refreshLive()
                         }}
-                        className={`flex items-center gap-1 justify-end text-[10px] ${
-                          weather.live ? 'text-mint-300' : 'text-alert-amber'
-                        }`}
-                        title={weather.liveSource || ''}
+                        className="flex items-center gap-1 justify-end text-[10px] text-white/70 hover:text-white"
+                        title={weather.liveSource || dataStatus?.code || ''}
                       >
                         <Radio className="w-3 h-3" />
-                        {weather.live ? 'LIVE' : 'OFFLINE · tap'}
+                        <DataStatusPill status={dataStatus} lang={lang} compact />
                       </button>
-                      <p className="text-[10px] text-white/40 mt-0.5">
-                        {tr(lang, 'updated')} {minsAgo} {tr(lang, 'minAgo')}
-                      </p>
                     </div>
                   </>
                 )}
@@ -1356,20 +1538,7 @@ export default function App() {
                   {topAlert.severity.toUpperCase()}
                 </span>
               )}
-              {weather?.live ? (
-                <span className="inline-flex items-center gap-1.5 text-mint-300 font-semibold">
-                  <span className="live-dot" /> LIVE
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 text-alert-amber font-semibold">
-                  <span className="live-dot-off" /> OFFLINE
-                </span>
-              )}
-              {isHome && (
-                <span className="text-white/45">
-                  {tr(lang, 'updated')} {minsAgo} {tr(lang, 'minAgo')}
-                </span>
-              )}
+              <DataStatusPill status={dataStatus} lang={lang} compact />
             </div>
           </header>
 
@@ -1386,6 +1555,9 @@ export default function App() {
                     aqi={aqi}
                     units={units}
                     minsAgo={minsAgo}
+                    dataStatus={dataStatus}
+                    netSnap={netSnap}
+                    onRefresh={refreshLive}
                     onOpenMode={openMode}
                     onOpenChat={askFromDashboard}
                     onOpenAlerts={() => setTab('alerts')}
@@ -1402,6 +1574,9 @@ export default function App() {
                       messages={messages}
                       onSend={onSend}
                       loading={chatLoading}
+                      chatStage={chatStage}
+                      onCancel={cancelChat}
+                      streamingId={streamingId}
                       weather={weather}
                       demoQueries={tr(lang, 'demoQueries')}
                     />
@@ -1577,7 +1752,7 @@ export default function App() {
                 type="button"
                 onClick={() => setShowAbout(false)}
                 className="p-1 rounded-lg hover:bg-white/10 focus-ring text-white/70"
-npx               >
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>

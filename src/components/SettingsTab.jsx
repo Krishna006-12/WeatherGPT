@@ -4,6 +4,7 @@ import { clearChatHistory } from '../services/storage'
 import { CITY_LIST } from '../data/cities'
 import { dbStats, networkHint } from '../services/db'
 import { memoryCacheStats } from '../services/weather'
+import { getPerfSnapshot } from '../services/perf'
 import { motion } from 'framer-motion'
 
 export default function SettingsTab({ lang, prefs, onChangePrefs, onResetOnboarding, cityId, monitor }) {
@@ -12,6 +13,7 @@ export default function SettingsTab({ lang, prefs, onChangePrefs, onResetOnboard
   const [dbInfo, setDbInfo] = useState(null)
   const net = networkHint()
   const mem = memoryCacheStats()
+  const perf = getPerfSnapshot()
 
   useEffect(() => {
     dbStats().then(setDbInfo).catch(() => setDbInfo({ ok: false }))
@@ -173,6 +175,21 @@ export default function SettingsTab({ lang, prefs, onChangePrefs, onResetOnboard
           </li>
           <li>
             • RAM weather cache: <strong className="text-white/80">{mem.cities}</strong> cities
+          </li>
+          <li>
+            • Perf · hits <strong className="text-white/80">{perf?.counters?.cache_hit ?? 0}</strong>
+            {' / '}miss <strong className="text-white/80">{perf?.counters?.cache_miss ?? 0}</strong>
+            {' · '}coalesce <strong className="text-white/80">{perf?.counters?.coalesce_hit ?? 0}</strong>
+            {perf?.latency_avg_ms?.weather != null && (
+              <>
+                {' · '}wx ~<strong className="text-white/80">{perf.latency_avg_ms.weather}ms</strong>
+              </>
+            )}
+            {perf?.initial_paint_ms != null && (
+              <>
+                {' · '}paint ~<strong className="text-white/80">{perf.initial_paint_ms}ms</strong>
+              </>
+            )}
           </li>
           <li>
             • {lang === 'hi' ? 'नेटवर्क: ' : 'Network: '}

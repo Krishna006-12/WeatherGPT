@@ -17,7 +17,7 @@ import {
   isCropQuestion,
   isCropFollowUp,
   getCropById,
-} from '../data/crops'
+} from '../data/crops.js'
 
 const PLACE_PREP =
   /\b(?:in|at|near|around|of|for|from)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.'-]{1,48})/i
@@ -99,12 +99,10 @@ export function classifyQuery(text, cropContext = null) {
   }
 
   // --- Crop (+ optional location) ---
-  if (activeCrop && (isCropQuestion(raw) || isCropFollowUp(raw))) {
-    // location only from preposition / trailing place — never the crop token
-    let loc =
-      cleanLoc(raw.match(PLACE_PREP)?.[1]) ||
-      // "Kanpur wheat" rare; prefer prep
-      null
+  // Crop route if named crop OR follow-up — never treat crop token as city
+  if (activeCrop && (crop || followUp || isCropQuestion(raw))) {
+    // location only from preposition / explicit place — never the crop token
+    let loc = cleanLoc(raw.match(PLACE_PREP)?.[1]) || null
 
     // "wheat in Kanpur" — PLACE_PREP captures Kanpur
     // If weather+place also present with crop ("weather for wheat in Kanpur")
@@ -112,8 +110,41 @@ export function classifyQuery(text, cropContext = null) {
       loc = wxLoc
     }
 
-    // Reject loc if it's the crop itself
-    if (loc && (isCropToken(loc) || detectCrop(loc)?.id === activeCrop.id)) {
+    // "Kanpur wheat" / "wheat Kanpur" — other token(s) as place candidate
+    if (!loc) {
+      const tokens = raw
+        .replace(/[?.!,;:]+$/g, '')
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+      const placeish = tokens.filter((t) => {
+        const tl = t.toLowerCase()
+        if (isCropToken(tl) || detectCrop(tl)) return false
+        if (
+          /^(in|at|for|of|the|a|an|my|our|about|will|rain|weather|irrigat\w*|spray\w*|how|what|should|kya|hai|ki|ke|ka|se|par)$/i.test(
+            tl,
+          )
+        )
+          return false
+        // likely place: capitalised Latin or Devanagari word length >= 3
+        if (/^[\u0900-\u097F]{3,}$/.test(t)) return true
+        if (/^[A-Za-z][A-Za-z.'-]{2,}$/.test(t) && t[0] === t[0].toUpperCase()) return true
+        // lowercase multi-letter known pattern — still allow single trailing/leading non-crop
+        if (/^[A-Za-z]{4,}$/.test(t) && tokens.length <= 4) return true
+        return false
+      })
+      if (placeish.length === 1) {
+        loc = cleanLoc(placeish[0])
+      }
+    }
+
+    // Reject loc if it's the crop itself or agri jargon
+    if (
+      loc &&
+      (isCropToken(loc) ||
+        detectCrop(loc)?.id === activeCrop.id ||
+        /\b(irrigat|spray|harvest|sowing|blight|disease|fungal|weather|rain|baarish)\b/i.test(loc))
+    ) {
       loc = null
     }
 

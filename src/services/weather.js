@@ -6,8 +6,18 @@
  * 4) Offline pack only if everything fails
  */
 
-import { CITIES, getCity } from '../data/cities'
-import { dbGetWeather, dbPutWeather, isSlowNetwork } from './db'
+import { CITIES, getCity } from '../data/cities.js'
+import { dbGetWeather, dbPutWeather, dbGetWeatherAny, isSlowNetwork } from './db.js'
+import {
+  markPackCached,
+  markPackLive,
+  getNetworkSnapshot,
+  fetchTimeoutMs,
+  shouldSkipPrefetch,
+  FRESH_MS,
+  STALE_MS,
+  OFFLINE_MAX_MS,
+} from './networkStatus.js'
 import {
   wmoInfoHonest,
   rainIntensityFromMm,
@@ -15,7 +25,24 @@ import {
   dayPopFrom as reDayPopFrom,
   buildLockedWeatherFacts,
   formatSourceFooter,
-} from './ruleEngine'
+} from './ruleEngine.js'
+import {
+  createInflight,
+  createTtlCache,
+  perfMark,
+  perfTime,
+  timedFetch,
+  getPerfSnapshot,
+} from './perf.js'
+import {
+  buildRiskSignalsFromForecast,
+  buildAlertBundle,
+  buildDemoRedAlert,
+  gdacsToOfficialAlert,
+  floodToRiskSignal,
+  normalizeAlert,
+  mergeAlertLists,
+} from './alertEngine.js'
 
 const WMO = {
   0: { en: 'Clear sky', hi: 'साफ आसमान', icon: 'sun', severity: 'green' },
@@ -117,74 +144,11 @@ function irrigationAdvice(recent, forecast, soil, lang) {
     : 'Medium soil-moisture signal — light irrigation only if crop shows stress.') + disc
 }
 
-function buildAlerts(city, daily, current) {
-  const alerts = []
-  const maxPop = safeMax(daily.precipitation_probability_max)
-  const maxRain = safeMax(daily.precipitation_sum)
-  const maxWind = safeMax(daily.wind_speed_10m_max)
-  const maxCode = safeMax(daily.weather_code)
-  const todayRain = daily.precipitation_sum?.[0] || 0
-  const todayPop = daily.precipitation_probability_max?.[0] || 0
-  const code = current.weather_code ?? current.weathercode ?? 0
-
-  // WMO 95 = thunderstorm (not automatic RED / not hail guarantee)
-  // WMO 96/99 = hail POSSIBLE in model class only
-  const hailClass = maxCode >= 96 || code === 96 || code === 99
-  const stormClass = maxCode >= 95 || code >= 95
-  if ((maxRain > 100 && maxPop > 70) || (hailClass && maxRain > 40) || maxCode >= 99) {
-    alerts.push({
-      id: `${city.id}-red-${Date.now()}`,
-      severity: 'red',
-      title: hailClass ? 'Severe Thunderstorm Watch · hail possible (model)' : 'Extremely Heavy Rain / Thunderstorm Watch',
-      title_hi: hailClass ? 'गंभीर तूफान वॉच · ओले संभव (मॉडल)' : 'अत्यधिक भारी वर्षा / तूफान वॉच',
-      summary: hailClass
-        ? `Model storm/hail-class signal near ${city.name} — not a confirmed hail report. Official IMD warnings take priority.`
-        : `Very heavy rainfall and thunderstorm risk over ${city.name} in the next 5 days (model thresholds).`,
-      summary_hi: hailClass
-        ? `${city.name_hi || city.name} के पास मॉडल तूफान/ओला-वर्ग संकेत — पुष्ट ओला रिपोर्ट नहीं। आधिकारिक IMD प्राथमिक।`
-        : `${city.name_hi || city.name} में अगले 5 दिनों में अत्यधिक भारी वर्षा व तूफान का मॉडल जोखिम।`,
-      time: 'Updated just now',
-      time_hi: 'अभी अपडेट',
-      modelled: true,
-      source: 'open-meteo-wmo-threshold',
-      officialText: `MODELLED (not official IMD): Elevated storm risk over ${city.name} (${city.state || ''}). WMO hail-class means hail possible — not guaranteed. Avoid waterlogged areas. Farmers: ensure drainage; delay spray if rain imminent.`,
-      officialText_hi: `मॉडल्ड (आधिकारिक IMD नहीं): ${city.name_hi || city.name} में उन्नत तूफान जोखिम। ओला-वर्ग = संभव, गारंटी नहीं।`,
-      meansForYou: 'Avoid low-lying roads. Charge devices. Move livestock to shelter. Conditional: delay foliar spray if rain is likely — check product label.',
-      meansForYou_hi: 'निचले इलाकों से बचें। डिवाइस चार्ज रखें। मवेशी सुरक्षित रखें। बारिश संभावना पर पर्णीय छिड़काव टालें — लेबल देखें।',
-    })
-  } else if (maxRain > 50 || maxPop >= 80 || maxWind > 45 || (stormClass && maxRain > 20)) {
-    alerts.push({
-      id: `${city.id}-amber-${Date.now()}`,
-      severity: 'amber',
-      title: 'Heavy Rain Watch',
-      title_hi: 'भारी वर्षा वॉच',
-      summary: `Heavy rainfall (${maxRain.toFixed(0)} mm peak) likely near ${city.name}.`,
-      summary_hi: `${city.name_hi || city.name} के आसपास भारी वर्षा (${maxRain.toFixed(0)} मिमी) की संभावना।`,
-      time: 'Updated just now',
-      time_hi: 'अभी अपडेट',
-      officialText: `IMD-style Amber Watch: Heavy rainfall likely at isolated places over ${city.name}. Wind gusts up to ${Math.round(maxWind)} km/h.`,
-      officialText_hi: `IMD-शैली एम्बर वॉच: ${city.name_hi || city.name} में भारी वर्षा संभावित। हवा ${Math.round(maxWind)} किमी/घं।`,
-      meansForYou: 'Carry umbrella. Avoid underpasses after dark. Hold non-urgent outdoor work.',
-      meansForYou_hi: 'छतरी रखें। अंडरपास से बचें। बाहरी काम टालें।',
-    })
-  } else if (todayPop >= 55 || todayRain > 5 || code >= 61) {
-    alerts.push({
-      id: `${city.id}-yellow-${Date.now()}`,
-      severity: 'yellow',
-      title: 'Rain Likely — Yellow Advisory',
-      title_hi: 'बारिश संभावित — येलो एडवाइजरी',
-      summary: `Rain likely today/tomorrow around ${city.name} (${todayPop}% chance).`,
-      summary_hi: `${city.name_hi || city.name} में आज/कल बारिश संभावना ${todayPop}%。`,
-      time: 'Updated just now',
-      time_hi: 'अभी अपडेट',
-      officialText: `IMD-style Yellow Advisory: Light to moderate rain / thundershowers likely over ${city.name}.`,
-      officialText_hi: `IMD-शैली येलो एडवाइजरी: ${city.name_hi || city.name} में हल्की से मध्यम बारिश संभावित।`,
-      meansForYou: 'Plan outdoor work in morning windows. Keep tarpaulin ready for harvested crop.',
-      meansForYou_hi: 'बाहर का काम सुबह करें। कटी फसल के लिए तिरपाल तैयार रखें।',
-    })
-  }
-  return alerts
+function buildAlerts(city, daily, current, opts = {}) {
+  // WeatherGPT RISK SIGNALS only — never official IMD/NDMA
+  return buildRiskSignalsFromForecast(city, daily, current, opts)
 }
+
 
 /** Normalize both full and simple Open-Meteo payloads */
 function normalizePayload(data) {
@@ -397,7 +361,14 @@ function parseWeather(city, raw, liveMeta = {}) {
         : cur.visibility
       : null
 
-  const modelAlerts = buildAlerts(
+  // Confidence may arrive later in pack; risk signals can omit until then
+  const earlyConfidence =
+    (raw.confidence && typeof raw.confidence === 'object' ? raw.confidence : null) ||
+    (raw.multi_model?.confidence && typeof raw.multi_model.confidence === 'object'
+      ? raw.multi_model.confidence
+      : null)
+
+  const riskSignals = buildAlerts(
     city,
     {
       precipitation_probability_max: days.map((d) => d.pop),
@@ -405,28 +376,95 @@ function parseWeather(city, raw, liveMeta = {}) {
       wind_speed_10m_max: days.map((d) => d.wind),
       weather_code: days.map((d) => d.code),
     },
-    { weather_code: code }
+    { weather_code: code },
+    { confidence: earlyConfidence }
   )
 
-  // Live external alerts from proxy (GDACS, flood model, etc.)
+  // Live external from proxy — classify official vs risk (never invent IMD)
   const external = Array.isArray(raw.live_alerts)
     ? raw.live_alerts
     : Array.isArray(liveMeta.live_alerts)
       ? liveMeta.live_alerts
       : []
 
-  const mergedAlerts = mergeAlerts(external, modelAlerts)
+  const official = []
+  const externalRisk = []
+  for (const a of external) {
+    const src = String(a.source || '')
+    if (/gdacs/i.test(src) || a.kind === 'official') {
+      official.push(gdacsToOfficialAlert({ ...a, place: a.place || city.name }))
+    } else if (/flood/i.test(src)) {
+      externalRisk.push(floodToRiskSignal({ ...a, place: a.place || city.name }))
+    } else {
+      // Modelled proxy rows → risk signals
+      externalRisk.push(
+        normalizeAlert({
+          ...a,
+          kind: 'risk_signal',
+          place: a.place || city.name,
+          source: a.source || 'WeatherGPT · proxy model',
+        })
+      )
+    }
+  }
+
+  const alertBundle = buildAlertBundle({
+    official: official.filter(Boolean),
+    risk: [...riskSignals, ...externalRisk.filter(Boolean)],
+    demo: [],
+  })
+  const mergedAlerts = alertBundle.alerts
 
   const sunrise = daily.sunrise?.[0]
   const sunset = daily.sunset?.[0]
 
+  // Multi-model block from server only (never invented client-side)
+  const multiModel =
+    raw.multi_model && typeof raw.multi_model === 'object' ? raw.multi_model : null
+  const primaryModelId =
+    multiModel?.primary_model_id ||
+    raw.model_meta?.name ||
+    raw.model ||
+    liveMeta.model ||
+    'open-meteo-best_match'
+
+  // Deterministic confidence from server engine only — never invent client-side scores
+  const confidence =
+    (raw.confidence && typeof raw.confidence === 'object' && raw.confidence.engine
+      ? raw.confidence
+      : null) ||
+    (multiModel?.confidence && typeof multiModel.confidence === 'object'
+      ? multiModel.confidence
+      : null)
+
   const pack = {
     city,
+    location: city
+      ? {
+          id: city.id,
+          name: city.name,
+          lat: city.lat,
+          lon: city.lon,
+          tz: city.tz || tzName,
+          countryCode: city.countryCode,
+        }
+      : null,
     fetchedAt: Date.now(),
     timezone: tzName,
     live: true,
+    stale: false,
+    fromCache: false,
+    demo: false,
+    synthetic: false,
+    dataStatus: 'live',
     liveSource: liveMeta.source || raw._source || 'open-meteo',
+    source: liveMeta.source || raw._source || 'open-meteo',
     alertMeta: raw.alert_sources || liveMeta.alert_sources || null,
+    // Server-aggregated multi-model (common schema summaries)
+    multiModel,
+    multi_model_mode: multiModel?.multi_model_mode || null,
+    // Forecast confidence (deterministic engine — LLM must not override)
+    confidence,
     current: {
       temp: Math.round(cur.temperature_2m ?? 28),
       feelsLike: Math.round(cur.apparent_temperature ?? cur.temperature_2m ?? 28),
@@ -435,6 +473,7 @@ function parseWeather(city, raw, liveMeta = {}) {
       windDir: cur.wind_direction_10m ?? 0,
       pressure: Math.round(cur.pressure_msl ?? 1010),
       precip: cur.precipitation || 0,
+      cloudCover: cur.cloud_cover != null ? Math.round(cur.cloud_cover) : null,
       code,
       condition: info.condition,
       condition_hi: wmoInfo(code, 'hi').condition,
@@ -442,6 +481,7 @@ function parseWeather(city, raw, liveMeta = {}) {
       isDay: cur.is_day === 1 || cur.is_day === true,
       visibility: visibilityKm,
       time: cur.time || null,
+      source_model: primaryModelId,
     },
     daily: days,
     hourly: hours,
@@ -462,6 +502,14 @@ function parseWeather(city, raw, liveMeta = {}) {
           : { en: 'Unfavourable for spraying (rain/wind)', hi: 'छिड़काव अनुकूल नहीं (बारिश/हवा)' },
     },
     alerts: mergedAlerts,
+    alertBundle: {
+      schema: alertBundle.schema,
+      official_alerts: alertBundle.official_alerts,
+      risk_signals: alertBundle.risk_signals,
+      counts: alertBundle.counts,
+      official_sources_status: alertBundle.official_sources_status,
+      honesty: alertBundle.honesty,
+    },
     sources: [
       {
         name: liveMeta.source === 'proxy' ? 'Open-Meteo Forecast API (via proxy)' : 'Open-Meteo Forecast API',
@@ -470,14 +518,34 @@ function parseWeather(city, raw, liveMeta = {}) {
       },
       {
         name: 'Model / feed',
-        role: String(liveMeta.model || raw.model || liveMeta.source || raw._source || 'open-meteo best_match / multi-model'),
+        role: String(primaryModelId),
         url: 'https://open-meteo.com/en/docs',
       },
+      ...(multiModel?.available_count >= 2
+        ? [
+            {
+              name: 'Multi-model NWP',
+              role: `Server-side ${multiModel.available_count} models · mode=${multiModel.multi_model_mode} · ${multiModel.ensemble?.agreementEn || ''}`.slice(
+                0,
+                160
+              ),
+              url: 'https://open-meteo.com/en/docs',
+            },
+          ]
+        : multiModel?.multi_model_mode === 'single'
+          ? [
+              {
+                name: 'Single NWP model',
+                role: 'Only one reliable model available — not multi-model consensus',
+                url: 'https://open-meteo.com/en/docs',
+              },
+            ]
+          : []),
       { name: 'GDACS', role: 'Multi-hazard events near region (when proxy attaches)', url: 'https://www.gdacs.org' },
       { name: 'Open-Meteo Flood API', role: 'River discharge signal (when enabled)', url: 'https://open-meteo.com/en/docs/flood-api' },
       {
         name: 'IMD',
-        role: 'Official Indian warnings are NOT auto-ingested here — colour labels follow IMD-style UX only',
+        role: 'IMD/NDMA NOT auto-ingested — never invent official Indian warnings; risk signals are WeatherGPT-only',
         url: 'https://mausam.imd.gov.in',
       },
       {
@@ -486,7 +554,13 @@ function parseWeather(city, raw, liveMeta = {}) {
         url: null,
       },
     ],
-    model: liveMeta.model || raw.model || liveMeta.source || raw._source || 'open-meteo',
+    model: primaryModelId,
+    model_meta: raw.model_meta || {
+      name: primaryModelId,
+      source: 'Open-Meteo Forecast API',
+      multi_model_mode: multiModel?.multi_model_mode || null,
+      fetched_at: new Date().toISOString(),
+    },
   }
   try {
     pack.facts = buildLockedWeatherFacts(pack)
@@ -496,22 +570,6 @@ function parseWeather(city, raw, liveMeta = {}) {
   return pack
 }
 
-/** Prefer external live alerts, then model; de-dupe by severity+category */
-function mergeAlerts(external = [], model = []) {
-  const rank = { red: 0, amber: 1, yellow: 2, green: 3 }
-  const all = [...external, ...model].filter(Boolean)
-  all.sort((a, b) => (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9))
-  const seen = new Set()
-  const out = []
-  for (const a of all) {
-    const k = `${a.severity}|${(a.category || a.title || '').slice(0, 40)}`
-    if (seen.has(k)) continue
-    seen.add(k)
-    out.push(a)
-    if (out.length >= 12) break
-  }
-  return out
-}
 
 function offlinePack(city) {
   const baseTemp = city.region?.includes('Coast') ? 30 : city.region?.includes('Arid') ? 34 : 28
@@ -565,22 +623,53 @@ function offlinePack(city) {
   const recentRain = daily.slice(0, 2).reduce((a, b) => a + b.rain, 0)
   const forecastRain = daily.reduce((a, b) => a + b.rain, 0)
   const soil = soilMoistureLevel(recentRain, forecastRain, 60)
-  const alerts = buildAlerts(
-    city,
-    {
-      precipitation_probability_max: daily.map((d) => d.pop),
-      precipitation_sum: daily.map((d) => d.rain),
-      wind_speed_10m_max: daily.map((d) => d.wind),
-      weather_code: daily.map((d) => d.code),
-    },
-    { weather_code: code }
-  )
+  const alerts = buildAlertBundle({
+    official: [],
+    risk: buildAlerts(
+      city,
+      {
+        precipitation_probability_max: daily.map((d) => d.pop),
+        precipitation_sum: daily.map((d) => d.rain),
+        wind_speed_10m_max: daily.map((d) => d.wind),
+        weather_code: daily.map((d) => d.code),
+      },
+      { weather_code: code },
+      { confidence: { score: 22, level: 'LOW', engine: 'weathergpt.confidence.v1' } }
+    ),
+    demo: [],
+  }).alerts
   const pack = {
     city,
     fetchedAt: Date.now(),
     timezone: city.tz || 'Asia/Kolkata',
     live: false,
-    liveSource: 'offline',
+    demo: true,
+    synthetic: true,
+    stale: true,
+    fromCache: false,
+    dataStatus: 'offline',
+    liveSource: 'offline-demo',
+    source: 'offline-demo',
+    // Deterministic low confidence for synthetic offline (not random, not LLM)
+    confidence: {
+      engine: 'weathergpt.confidence.v1',
+      score: 22,
+      level: 'LOW',
+      reasons: [
+        'Offline synthetic pack — not live multi-model data',
+        'Confidence capped for non-live forecasts',
+      ],
+      modelAgreement: {
+        modelCount: 0,
+        agreementLevel: 'none',
+        modelsUsed: [],
+        temperature: { values: {}, count: 0, mean: null, spread: null },
+        precipitation_probability: { values: {}, count: 0, mean: null, spread: null },
+        precipitation: { values: {}, count: 0, mean: null, spread: null },
+        wind_speed: { values: {}, count: 0, mean: null, spread: null },
+      },
+      meta: { deterministic: true, llm_decides: false, random: false, live: false },
+    },
     current: {
       temp: Math.round(baseTemp),
       feelsLike: Math.round(baseTemp + 2),
@@ -615,7 +704,7 @@ function offlinePack(city) {
     alerts,
     sources: [
       { name: 'Offline pack', role: 'Fallback when network blocked', url: null },
-      { name: 'IMD thresholds', role: 'Alert colour categories', url: 'https://mausam.imd.gov.in' },
+      { name: 'WeatherGPT risk engine', role: 'Model thresholds only — NOT official IMD/NDMA', url: null },
     ],
   }
   try {
@@ -626,47 +715,62 @@ function offlinePack(city) {
   return pack
 }
 
-const cache = new Map()
-const CACHE_TTL_LIVE = 5 * 60 * 1000
-const CACHE_TTL_OFFLINE = 45 * 1000 // retry live soon
-const IDB_MAX_AGE = 12 * 60 * 60 * 1000 // 12h offline reuse
-const IDB_STALE_OK = 72 * 60 * 60 * 1000 // 3d last-resort offline
+const memCache = createTtlCache({ name: 'weather', defaultTtlMs: 4 * 60 * 1000 })
+const inflight = createInflight()
+/** generation token per city — prevents stale overwrite */
+const cityGen = new Map()
+
+// TTLs (sensible for free NWP + UX)
+const TTL_LIVE_PACK = FRESH_MS // soft-fresh window for mem "live" packs
+const TTL_OFFLINE = 45 * 1000 // synthetic demo packs must not stick
+const IDB_SOFT_AGE = STALE_MS // prefer revalidate after 30 min
+const IDB_MAX_AGE = 12 * 60 * 60 * 1000 // slow-net may keep disk longer before force
+const IDB_STALE_OK = OFFLINE_MAX_MS // absolute offline ceiling 72h
+
+// Legacy Map facade for clearCache / memoryCacheStats
+const cache = {
+  get(key) {
+    return memCache.peek(key)
+  },
+  set(key, value) {
+    memCache.set(key, value)
+  },
+  delete(key) {
+    memCache.delete(key)
+    cityGen.delete(key)
+  },
+  clear() {
+    memCache.clear()
+    cityGen.clear()
+    inflight.clear()
+  },
+  get size() {
+    return memCache.size()
+  },
+  keys() {
+    return []
+  },
+}
 
 function openMeteoDirectUrl(lat, lon, tz = 'auto') {
+  // Compact daily/hourly — still enough for UI (7d + 48h)
   return (
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl,visibility` +
-    `&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,visibility` +
+    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl,visibility,cloud_cover` +
+    `&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,uv_index_max,sunrise,sunset` +
-    `&timezone=${encodeURIComponent(tz)}&forecast_days=7`
+    `&timezone=${encodeURIComponent(tz)}&forecast_days=7&forecast_hours=48`
   )
 }
 
-async function fetchJson(url, timeoutMs = 8000) {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      headers: { Accept: 'application/json' },
-      mode: 'cors',
-      cache: 'no-cache',
-    })
-    const text = await res.text()
-    // Critical: Vercel SPA fallback returns index.html for missing /api — treat as failure
-    const trimmed = text.trimStart()
-    if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
-      throw new Error('HTML response (API missing or blocked)')
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    try {
-      return JSON.parse(text)
-    } catch {
-      throw new Error('Invalid JSON')
-    }
-  } finally {
-    clearTimeout(timer)
-  }
+async function fetchJson(url, timeoutMs = 8000, signal) {
+  const ms = fetchTimeoutMs(timeoutMs)
+  const { json } = await timedFetch(
+    url,
+    { timeoutMs: ms, signal, cache: 'no-cache', mode: 'cors' },
+    'weather'
+  )
+  return json
 }
 
 function isForecastPayload(data) {
@@ -674,27 +778,25 @@ function isForecastPayload(data) {
 }
 
 /**
- * Multi-path LIVE fetch — proxy first, then direct Open-Meteo paths
+ * Multi-path LIVE fetch — race direct Open-Meteo vs proxy (independent).
+ * Supports AbortSignal for rapid city switches.
  */
-async function fetchLiveRaw(city) {
+async function fetchLiveRaw(city, signal) {
   const lat = city.lat
   const lon = city.lon
-  // World cities: always auto TZ (Dubai/Tokyo/…). India curated: Kolkata default.
   const tz =
     city.tz ||
     (city.countryCode && city.countryCode !== 'IN' ? 'auto' : 'Asia/Kolkata')
   const name = encodeURIComponent(city.name || 'Area')
   const errors = []
 
-  /**
-   * FAST PATH: race direct Open-Meteo vs short proxy.
-   * Old order waited up to 16s on a slow/hanging /api/weather before Dubai painted.
-   */
   const directUrl = openMeteoDirectUrl(lat, lon, tz === 'auto' ? 'auto' : tz)
+  // multimodel=0 on hot path — multi-model is Climate tab /api/models (saves ~N upstream calls)
   const proxyUrl =
-    `/api/weather?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}&name=${name}`
+    `/api/weather?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}&name=${name}&multimodel=0`
 
-  // First successful response wins (direct usually ~200–600ms; proxy can hang)
+  const t0 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()
+
   const race = await new Promise((resolve) => {
     let pending = 2
     let done = false
@@ -707,13 +809,17 @@ async function fetchLiveRaw(city) {
       done = true
       resolve(v)
     }
-    fetchJson(directUrl, 5500)
+    if (signal?.aborted) {
+      resolve(null)
+      return
+    }
+    fetchJson(directUrl, 5000, signal)
       .then((data) => {
         if (isForecastPayload(data)) win({ data, source: 'open-meteo-direct' })
         else fail()
       })
       .catch(fail)
-    fetchJson(proxyUrl, 4500)
+    fetchJson(proxyUrl, 4500, signal)
       .then((data) => {
         if (isForecastPayload(data)) win({ data, source: data._proxy ? 'proxy' : 'proxy-ok' })
         else fail()
@@ -721,11 +827,19 @@ async function fetchLiveRaw(city) {
       .catch(fail)
   })
 
-  if (race) return race
+  if (race) {
+    const ms = Math.round(
+      (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) - t0
+    )
+    perfTime('weather_ms', ms)
+    perfMark('weather_fetch', { source: race.source, ms, city: city.id || city.name })
+    return race
+  }
 
-  // Fallback chain (only if race failed)
+  if (signal?.aborted) throw new Error('aborted')
+
   try {
-    const data = await fetchJson(openMeteoDirectUrl(lat, lon, 'auto'), 7000)
+    const data = await fetchJson(openMeteoDirectUrl(lat, lon, 'auto'), 7000, signal)
     if (isForecastPayload(data)) return { data, source: 'open-meteo-retry' }
     errors.push('retry: empty')
   } catch (e) {
@@ -739,15 +853,14 @@ async function fetchLiveRaw(city) {
       `&hourly=temperature_2m,precipitation_probability,weathercode,precipitation` +
       `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset` +
       `&timezone=auto&forecast_days=7`
-    const data = await fetchJson(simple, 6000)
+    const data = await fetchJson(simple, 6000, signal)
     if (isForecastPayload(data)) return { data, source: 'open-meteo-simple' }
   } catch (e) {
     errors.push('simple: ' + e.message)
   }
 
-  // Last: longer proxy (alerts bundle) if pure forecast failed
   try {
-    const data = await fetchJson(proxyUrl, 8000)
+    const data = await fetchJson(proxyUrl, 8000, signal)
     if (isForecastPayload(data)) {
       return { data, source: data._proxy ? 'proxy-late' : 'proxy-ok-late' }
     }
@@ -760,32 +873,73 @@ async function fetchLiveRaw(city) {
   throw err
 }
 
-export async function fetchWeather(cityOrId, { force = false } = {}) {
+export async function fetchWeather(cityOrId, { force = false, signal } = {}) {
   const city =
     typeof cityOrId === 'string' ? getCity(cityOrId) || CITIES[cityOrId] || CITIES.lucknow : cityOrId
   if (!city?.lat || !city?.lon) throw new Error('Invalid city for weather fetch')
 
-  const key = city.id
-  const slow = isSlowNetwork()
-  const hit = cache.get(key)
-  if (!force && hit) {
-    // Longer memory TTL on slow nets to cut transfer
-    const ttl = hit.live
-      ? slow
-        ? CACHE_TTL_LIVE * 3
-        : CACHE_TTL_LIVE
-      : CACHE_TTL_OFFLINE
-    if (Date.now() - hit.fetchedAt < ttl) return hit
+  const key = city.id || `${city.lat.toFixed(3)},${city.lon.toFixed(3)}`
+  const net = getNetworkSnapshot()
+  const slow = net.slow || isSlowNetwork()
+
+  // Hard offline: never hit network — last successful pack only
+  if (!net.online && !force) {
+    const mem = memCache.peek(key)
+    if (mem?.current && !mem.demo) {
+      return markPackCached(mem, { reason: 'offline-mem', source: mem.liveSource || 'memory', online: false })
+    }
+    try {
+      const disk = await dbGetWeatherAny(key)
+      if (disk?.current) {
+        const pack = markPackCached(disk, {
+          reason: 'offline-idb',
+          source: disk.liveSource || 'IndexedDB',
+          online: false,
+        })
+        memCache.set(key, pack)
+        return pack
+      }
+    } catch {
+      /* */
+    }
+    const demo = offlinePack(city)
+    memCache.set(key, demo)
+    return demo
   }
 
-  // Instant paint: serve fresh-enough IDB cache first, refresh live in background
+  if (!force) {
+    const hit = memCache.get(key, slow ? TTL_LIVE_PACK * 2 : TTL_LIVE_PACK)
+    if (hit?.current) {
+      if (hit.demo || hit.synthetic) {
+        const age = Date.now() - (hit.fetchedAt || 0)
+        if (age < TTL_OFFLINE) return hit
+      } else if (hit.live && !hit.stale && !hit.fromCache) {
+        return markPackLive(hit, hit.liveSource)
+      } else if (!hit.live) {
+        // Cached mem: still return but labeled cached; bg refresh if online
+        const labeled = markPackCached(hit, {
+          reason: 'mem-ttl',
+          source: hit.liveSource || 'memory',
+          online: net.online,
+        })
+        if (net.online) refreshLiveInBackground(city, key)
+        return labeled
+      }
+    }
+  }
+
+  // Instant paint: IDB then background refresh (never labeled live)
   if (!force) {
     try {
-      const disk = await dbGetWeather(key, slow ? IDB_MAX_AGE : 30 * 60 * 1000)
+      const disk = await dbGetWeather(key, slow ? IDB_MAX_AGE : IDB_SOFT_AGE)
       if (disk?.current) {
-        const pack = { ...disk, live: !!disk.live && !disk.stale }
-        cache.set(key, pack)
-        refreshLiveInBackground(city, key)
+        const pack = markPackCached(disk, {
+          reason: disk.softExpired ? 'idb-stale' : 'idb',
+          source: disk.liveSource || 'IndexedDB',
+          online: net.online,
+        })
+        memCache.set(key, pack)
+        if (net.online) refreshLiveInBackground(city, key)
         return pack
       }
     } catch {
@@ -793,81 +947,131 @@ export async function fetchWeather(cityOrId, { force = false } = {}) {
     }
   }
 
-  try {
-    const { data, source } = await fetchLiveRaw(city)
-    const parsed = parseWeather(city, data, { source })
-    cache.set(key, parsed)
-    // Persist async — never block render
-    dbPutWeather(key, parsed).catch(() => {})
-    return parsed
-  } catch (e) {
-    console.warn('[WeatherGPT] LIVE failed → cache/offline:', e.message)
-    // 1) IndexedDB last good pack (even stale)
+  // Online live path — coalesce
+  return inflight.run(`wx:${key}:${force ? 1 : 0}`, async () => {
+    const gen = (cityGen.get(key) || 0) + 1
+    cityGen.set(key, gen)
+    const t0 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()
     try {
-      const disk = await dbGetWeather(key, IDB_STALE_OK)
-      if (disk?.current) {
-        const pack = {
-          ...disk,
-          live: false,
-          liveSource: 'IndexedDB cache',
-          stale: true,
+      // Re-check online inside worker
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        const disk = await dbGetWeatherAny(key)
+        if (disk?.current) {
+          return markPackCached(disk, { reason: 'offline-race', source: 'IndexedDB', online: false })
         }
-        cache.set(key, pack)
-        return pack
+        return offlinePack(city)
       }
-    } catch {
-      /* fall through */
+
+      const { data, source } = await fetchLiveRaw(city, signal)
+      if (signal?.aborted || cityGen.get(key) !== gen) {
+        const peek = memCache.peek(key)
+        if (peek) return peek.live ? peek : markPackCached(peek, { reason: 'stale-gen', online: true })
+      }
+      let parsed = parseWeather(city, data, { source })
+      parsed = markPackLive(parsed, source)
+      if (cityGen.get(key) === gen) {
+        memCache.set(key, parsed)
+        // Persist last successful — no secrets
+        dbPutWeather(key, parsed).catch(() => {})
+      }
+      const ms = Math.round(
+        (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) - t0,
+      )
+      perfTime('weather_ms', ms)
+      return parsed
+    } catch (e) {
+      if (signal?.aborted || /abort/i.test(String(e.message || ''))) throw e
+      console.warn('[WeatherGPT] LIVE failed → cache/offline:', e.message)
+      // Prefer real last-success over demo
+      try {
+        const disk = await dbGetWeatherAny(key)
+        if (disk?.current) {
+          const pack = markPackCached(disk, {
+            reason: 'fetch-fail',
+            source: disk.liveSource || 'IndexedDB',
+            online: getNetworkSnapshot().online,
+          })
+          memCache.set(key, pack)
+          return pack
+        }
+      } catch {
+        /* fall through */
+      }
+      const mem = memCache.peek(key)
+      if (mem?.current && !mem.demo) {
+        return markPackCached(mem, { reason: 'fetch-fail-mem', online: getNetworkSnapshot().online })
+      }
+      const pack = offlinePack(city)
+      memCache.set(key, pack)
+      return pack
     }
-    // 2) Synthetic offline pack (labelled, not fake LIVE)
-    const pack = offlinePack(city)
-    cache.set(key, pack)
-    return pack
-  }
+  })
 }
 
 function refreshLiveInBackground(city, key) {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-  // fire-and-forget; coalesce with short delay
+  const net = getNetworkSnapshot()
+  if (!net.online) return
+  // Weak net: skip background refresh unless pack is very stale
+  if (net.coreOnly) {
+    const peek = memCache.peek(key)
+    const age = peek?.fetchedAt ? Date.now() - peek.fetchedAt : Infinity
+    if (age < STALE_MS) return
+  }
   setTimeout(() => {
-    fetchLiveRaw(city)
-      .then(({ data, source }) => {
-        const parsed = parseWeather(city, data, { source })
-        cache.set(key, parsed)
+    const gen = cityGen.get(key) || 0
+    inflight
+      .run(`wx:${key}:bg`, async () => {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return null
+        const { data, source } = await fetchLiveRaw(city)
+        if (cityGen.get(key) !== gen && cityGen.get(key) > gen) return null
+        let parsed = parseWeather(city, data, { source })
+        parsed = markPackLive(parsed, source)
+        memCache.set(key, parsed)
         dbPutWeather(key, parsed).catch(() => {})
+        return parsed
       })
       .catch(() => {})
-  }, 400)
+  }, net.slow ? 1200 : 400)
 }
+
+export { shouldSkipPrefetch, getNetworkSnapshot, markPackCached, markPackLive }
 
 export function injectSimulatedAlert(weather, cityOverride) {
   const city = cityOverride || weather.city
-  const alert = {
-    id: `sim-red-${Date.now()}`,
-    severity: 'red',
-    title: 'SIMULATED: Extreme Rain Warning',
-    title_hi: 'सिमुलेटेड: अत्यधिक वर्षा चेतावनी',
-    summary: `Red alert drill: 200mm+ rain scenario for ${city.name}`,
-    summary_hi: `रेड अलर्ट ड्रिल: ${city.name_hi || city.name} के लिए 200मिमी+ वर्षा परिदृश्य`,
-    time: 'Just now · DEMO',
-    time_hi: 'अभी · डेमो',
-    officialText: `IMD RED WARNING (SIMULATION FOR DEMO): Extremely heavy rainfall very likely over ${city.name} within 24–36 hrs. This is a hackathon simulation — not a live IMD bulletin.`,
-    officialText_hi: `IMD RED चेतावनी (डेमो): ${city.name_hi || city.name} में 24–36 घंटे में अत्यधिक भारी वर्षा। यह सिमुलेशन है।`,
-    meansForYou: 'DEMO only. Production would push SMS/IVR to saved users.',
-    meansForYou_hi: 'केवल डेमो। प्रोडक्शन में SMS/IVR अलर्ट मिलेगा।',
-    simulated: true,
-  }
+  const alert = buildDemoRedAlert(city)
+  const rest = (weather.alerts || []).filter((a) => !a.simulated && a.kind !== 'demo')
   return {
     ...weather,
-    alerts: [alert, ...weather.alerts.filter((a) => !a.simulated)],
+    alerts: [alert, ...rest],
+    alertBundle: {
+      ...(weather.alertBundle || {}),
+      demo_alerts: [alert],
+      alerts: [alert, ...rest],
+      counts: {
+        total: 1 + rest.length,
+        official: rest.filter((a) => a.kind === 'official').length,
+        risk_signal: rest.filter((a) => a.kind === 'risk_signal').length,
+        demo: 1,
+      },
+    },
   }
 }
 
 export function clearCache(cityId) {
-  if (cityId) cache.delete(cityId)
-  else cache.clear()
+  if (cityId) {
+    cache.delete(cityId)
+    // bump gen so in-flight stale writes are ignored
+    cityGen.set(cityId, (cityGen.get(cityId) || 0) + 1)
+  } else cache.clear()
 }
 
 /** Memory footprint helper for Settings / debug */
 export function memoryCacheStats() {
-  return { cities: cache.size, keys: [...cache.keys()].slice(0, 20) }
+  return {
+    cities: memCache.size(),
+    keys: [],
+    perf: getPerfSnapshot(),
+  }
 }
+
+export { getPerfSnapshot }

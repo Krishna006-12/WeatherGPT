@@ -22,3 +22,36 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.vercel
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+
+# Local / deploy junk
+weathergpt-deploy.zip
+.arena
+
+# Backups / local IDE junk
+*.bak
+*.tmp
+*.swp
+.DS_Store
+
+# Extra env variants (belt + suspenders)
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Python intel
+python-intel/.venv/
+python-intel/.env
+python-intel/**/__pycache__/
+python-intel/.pytest_cache/
+
+.vercel
+.env*

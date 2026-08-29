@@ -1,43 +1,107 @@
-WeatherGPT — IMPACT, SCALE & COST MODEL (Transparent)
+WeatherGPT — IMPACT, SCALE & COST MODEL (transparent)
 =====================================================
-Smart India Hackathon Round-2. Planning & Operational Architecture.
+For SIH Round-2. Numbers are **planning models**, not audited production metrics.
+Label every figure as estimate when speaking to judges.
 
-A) PROBLEM & BENEFICIARIES
---------------------------
+A) PROBLEM & WHO BENEFITS
+-------------------------
 Primary:
-  - Small and marginal farmers: Irrigation, fertilizer & spray scheduling.
-  - Village communities & Gram Panchayats: Early warning for floods, cloudbursts, severe thunderstorms.
-  - School administrators: Heatwave / outdoor advisories.
-  - District Disaster Management Authorities (DDMA): Coordinated multi-channel dispatch.
+  - Small/marginal farmers — irrigation & spray timing, rain risk
+  - District schools — heat / outdoor activity calls
+  - Travellers & local gov ops rooms — early situational awareness
+Secondary:
+  - Urban users (AQI + rain)
+  - Hackathon / research demos of open met stacks
 
-B) RURAL REACH LAYERS
----------------------
-Layer 1 (Smartphone User):
-  - Progressive Web App (PWA) with grounded bilingual AI, live NWP models, and voice interface.
+B) CURRENT REACH (this build)
+-----------------------------
+  - Channel: Progressive Web App + browser notifications
+  - Identity: per-browser (localStorage), no national user DB yet
+  - Languages live: Hindi, English
+  - Measured users: **not claimed** until analytics deployed
+    (honest: pilot stage / college + demo traffic only)
 
-Layer 2 (Feature Phone / Low-Connectivity Rural Citizen):
-  - 160-Char DLT SMS payload (copy-ready & direct SMS URI).
-  - Village IVR Loudspeaker announcement broadcast by Sarpanch / ASHA worker.
-  - WhatsApp FPO community forward.
-
-Layer 3 (National Scale Gateway):
-  - Institutional bulk push via Government CDAC / NIC SMS Gateway & DLT registration.
-
-C) COST MODEL (INR)
--------------------
-  - Web Hosting: Serverless Edge (Vercel / Cloudflare) ≈ ₹0 for pilot scale.
-  - Weather APIs: Open-Meteo Open Data ≈ Free tier for moderate QPS.
-  - SMS DLT Commercial Rate: ₹0.15 per SMS.
-
-District Pilot Example:
-  - 50,000 opted-in farmers.
-  - 4 RED Alert emergency events per year.
-  - Cost = 50,000 × 4 × ₹0.15 = ₹30,000 / year total SMS budget.
-  - Per farmer cost per year = ₹0.60 (paisa level).
-
-D) STAGE ROADMAP TO NATIONAL DEPLOYMENT
+C) RURAL RELAY (no smartphone end-user)
 ---------------------------------------
-  - Stage 0 (Current): Live multi-model NWP engine + Grounded AI + Rural Relay Studio + 6 Indic Languages.
-  - Stage 1: District Agri University / KVK pilot in 2 blocks with SMS relay.
-  - Stage 2: State Department of Agriculture portal embedding & Bhashini API integration.
-  - Stage 3: Direct IMD radar & Doppler polygon integration via official MoU.
+Layered model (do not skip layers when pitching):
+
+  L1 Smartphone user (app)
+     → sees alert + can Share
+
+  L2 Feature phone / no data
+     → L1 user or village volunteer opens alert
+     → taps "SMS text" / copies script
+     → sends personal SMS or reads IVR script at loudspeaker / mandi board
+
+  L3 Institutional bulk (production)
+     → State agri / DDMA provides numbers (consent + DLT)
+     → MSG91 / Twilio / gov SMS gateway
+     → template: RED/AMBER only to reduce cost & fatigue
+
+App support today: L1 + L2 tools (SMS body, WhatsApp, IVR script).
+L3 = integration + MoU + DLT registration (roadmap).
+
+D) COST MODEL (INR, approximate, 2026 planning)
+-----------------------------------------------
+Assumptions (state clearly if challenged):
+  - Avg SMS India commercial: ₹0.12 – ₹0.25 / SMS (volume dependent)
+  - Use ₹0.15 mid for math
+  - Only RED (and optional AMBER) auto-SMS
+  - Free tier web hosting (Vercel) + free met APIs for moderate QPS
+
+Example district pilot:
+  - 50,000 opted-in farmers
+  - 4 RED events / year district-wide
+  - 1 SMS per event per user
+  → 50,000 × 4 × ₹0.15 = ₹30,000 / year SMS
+  → Per user per year ≈ ₹0.60 SMS only
+
+National sketch (illustrative, NOT a claim of deployment):
+  - 10 million opted-in
+  - 3 SMS/user/year average
+  → 30e6 × ₹0.15 = ₹45 lakh / year SMS
+  Add: gateway, DLT, support staff, redundancy — budget 2–4× for ops.
+
+App/API infra at pilot:
+  - Vercel hobby/pro + Neon free/pro: often < ₹2–5k/month early
+  - LLM phrasing (optional): Gemini free tier or few thousand INR if paid
+  - Dominant variable cost at scale = **SMS/voice**, not weather API
+
+E) LATENCY TARGETS
+------------------
+  - Forecast API: typically 200–1500 ms (network)
+  - Deterministic chat: < 100 ms after weather pack in memory
+  - Optional LLM chat: +0.5–3 s
+  - Alert poll: ~3 minutes client cadence (configurable); cron can be 1–5 min
+
+F) GOVERNMENT / INSTITUTION TIE-UP PLAN (stages)
+------------------------------------------------
+Stage 0 (now): Open data + public demo + honesty docs
+Stage 1: College/district agri university or DDMA pilot MoU
+         - 1–2 blocks, consent forms, WhatsApp group + app
+Stage 2: State agri portal deep-link / embed + DLT SMS templates
+Stage 3: IMD authorised warning feed when licence available
+         - Replace model colours with official polygons where present
+
+Never claim Stage 2–3 complete without paperwork.
+
+G) METRICS TO ADD BEFORE NATIONAL (engineering backlog)
+-------------------------------------------------------
+  [ ] Privacy-respecting analytics (page views, chat intents, alert opens)
+  [ ] alert_events table (when DB lands): sent / failed / acknowledged
+  [ ] Cost dashboard: SMS count × rate
+  [ ] Feedback button: “was this advisory useful?” (1–5)
+
+H) ONE SLIDE — IMPACT (suggested bullets)
+-----------------------------------------
+  • Decision support on LIVE open meteorological feeds (source-cited)
+  • HI+EN including voice for low-literacy smartphone users
+  • Rural relay: SMS-ready text + IVR script (bulk gateway = production)
+  • Pilot cost order: paisa-level SMS per user per event at scale
+  • Path to gov: block pilot → DLT SMS → official IMD when licensed
+
+I) ANTI-SLIDE (do not show)
+--------------------------
+  • Fake user counts
+  • “We cover all of India with official IMD API”
+  • “100% accurate rainfall AI model we trained”

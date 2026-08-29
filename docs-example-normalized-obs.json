@@ -1,0 +1,31 @@
+{
+  "location": {
+    "name": "Tokyo",
+    "lat": 35.7,
+    "lon": 139.625,
+    "timezone": "Asia/Tokyo",
+    "elevation_m": 37
+  },
+  "timestamp": "2026-08-29T04:15",
+  "temperature": 22.6,
+  "apparent_temperature": 26.5,
+  "precipitation_probability": 68,
+  "precipitation": 0.1,
+  "wind_speed": 3.7,
+  "wind_direction": 29,
+  "humidity": 91,
+  "cloud_cover": 60,
+  "weather_code": 51,
+  "source_model": "best_match",
+  "meta": {
+    "model_name": "Best match (Open-Meteo blend)",
+    "model_id": "best_match",
+    "provider": "Open-Meteo",
+    "forecast_timestamp": "2026-08-29T04:15",
+    "model_run_time": null,
+    "source": "Open-Meteo Forecast API",
+    "generationtime_ms": 0.3116130828857422,
+    "fetched_at": "2026-08-28T19:27:57.607Z",
+    "variable_notes": null
+  }
+}

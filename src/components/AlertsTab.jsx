@@ -31,11 +31,29 @@ function severityMeta(sev) {
 }
 
 function sourceBadge(a) {
-  if (a.source === 'GDACS') return 'GDACS'
-  if (a.source === 'Open-Meteo Flood') return 'FLOOD'
+  if (a.kind === 'official' || a.official) return 'OFFICIAL'
+  if (a.kind === 'demo' || a.simulated) return 'DEMO'
+  if (a.kind === 'risk_signal' || a.risk_signal || a.modelled) return 'RISK'
+  if (/gdacs/i.test(String(a.source || ''))) return 'OFFICIAL'
+  if (/flood/i.test(String(a.source || ''))) return 'RISK'
   if (a.external) return 'LIVE'
-  if (a.simulated) return 'DEMO'
-  return 'MODEL'
+  return 'RISK'
+}
+
+function kindLabel(a, lang) {
+  if (a.kind === 'official' || a.official) {
+    return lang === 'hi' ? 'आधिकारिक अलर्ट' : 'Official alert'
+  }
+  if (a.kind === 'demo' || a.simulated) {
+    return lang === 'hi' ? 'डेमो (आधिकारिक नहीं)' : 'Demo (not official)'
+  }
+  return lang === 'hi' ? 'WeatherGPT जोखिम संकेत' : 'WeatherGPT risk signal'
+}
+
+function kindTone(a) {
+  if (a.kind === 'official' || a.official || /gdacs/i.test(String(a.source || ''))) return 'official'
+  if (a.kind === 'demo' || a.simulated) return 'demo'
+  return 'risk'
 }
 
 export default function AlertsTab({
@@ -114,8 +132,8 @@ export default function AlertsTab({
           <p className="text-[12px] text-white/55 mt-0.5">
             {city ? `${city} · ` : ''}
             {lang === 'hi'
-              ? 'लाइव: GDACS · Flood · मौसम थ्रेशोल्ड'
-              : 'Live: GDACS · Flood · meteo thresholds'}
+              ? 'आधिकारिक: GDACS · जोखिम: WeatherGPT थ्रेशोल्ड (IMD गढ़ा नहीं)'
+              : 'Official: GDACS · Risk: WeatherGPT thresholds (IMD never invented)'}
           </p>
         </div>
         <button
@@ -293,7 +311,9 @@ export default function AlertsTab({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: Math.min(i * 0.04, 0.3), duration: 0.28 }}
                 onClick={() => setOpen(a)}
-                className="w-full text-left dash-glass overflow-hidden hover:border-sky-400/35 transition flex pressable focus-ring"
+                className={`w-full text-left dash-glass alert-row is-${kindTone(a)} overflow-hidden hover:border-sky-400/35 transition flex pressable focus-ring`}
+                data-alert-kind={kindTone(a)}
+                aria-label={`${kindLabel(a, lang)}: ${lang === 'hi' ? a.title_hi || a.title : a.title}`}
               >
                 <div className={`w-1.5 shrink-0 ${meta.bar}`} />
                 <div className="flex-1 p-3.5">
@@ -301,10 +321,13 @@ export default function AlertsTab({
                     <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${meta.cls}`}>
                       {meta.label}
                     </span>
-                    <span className="text-[10px] bg-navy-900 text-white px-1.5 py-0.5 rounded-full">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold tracking-wide pg-badge-source is-${kindTone(a)}`}>
                       {sourceBadge(a)}
                     </span>
-                    {a.simulated && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full alert-kind-label is-${kindTone(a)}`}>
+                      {kindLabel(a, lang)}
+                    </span>
+                    {(a.simulated || a.kind === 'demo') && (
                       <span className="text-[10px] bg-white/15 text-white/60 px-1.5 py-0.5 rounded-full">DEMO</span>
                     )}
                     {a.place && tab === 'nearby' && (
@@ -417,22 +440,52 @@ export default function AlertsTab({
                   </h3>
                   <div className="flex items-center gap-2 mt-2 mb-4 flex-wrap">
                     <span className="text-[10px] bg-navy-900 text-white px-2 py-0.5 rounded-full">
-                      {open.source || 'MODEL'}
+                      {open.source || sourceBadge(open)}
                     </span>
-                    {open.external && (
+                    <span className="text-[10px] bg-white/10 text-white/60 px-2 py-0.5 rounded-full font-semibold">
+                      {kindLabel(open, lang)}
+                    </span>
+                    {open.kind === 'official' && (
                       <span className="text-[10px] bg-mint-400/20 text-white px-2 py-0.5 rounded-full font-semibold">
-                        LIVE FEED
+                        VERIFIED FEED
                       </span>
                     )}
                     {(open.place || city) && (
                       <span className="text-[12px] text-white/55">{open.place || city}</span>
                     )}
                   </div>
+                  {(open.disclaimer_en || open.disclaimer_hi) && (
+                    <p className="text-[11px] text-amber-200/90 mb-2 leading-relaxed">
+                      {lang === 'hi' ? open.disclaimer_hi || open.disclaimer_en : open.disclaimer_en}
+                    </p>
+                  )}
+                  {open.reason && (
+                    <div className="mb-2 bg-white/5 border border-white/10 rounded-xl p-3 text-[12px] text-white/70">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-1">
+                        {lang === 'hi' ? 'कारण / थ्रेशोल्ड' : 'Reason / threshold'}
+                      </p>
+                      {lang === 'hi' ? open.reason_hi || open.reason : open.reason}
+                    </div>
+                  )}
                   <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 text-[13px] leading-relaxed text-white/75 whitespace-pre-wrap">
                     {lang === 'hi'
                       ? open.officialText_hi || open.officialText || open.summary_hi || open.summary
                       : open.officialText || open.summary}
                   </div>
+                  {(open.valid_from || open.valid_until) && (
+                    <p className="text-[11px] text-white/40 mt-2">
+                      {lang === 'hi' ? 'वैध: ' : 'Valid: '}
+                      {open.valid_from || '—'} → {open.valid_until || '—'}
+                      {open.expired ? (lang === 'hi' ? ' · समाप्त' : ' · expired') : ''}
+                    </p>
+                  )}
+                  {open.confidence?.score != null && (
+                    <p className="text-[11px] text-white/40 mt-1">
+                      {lang === 'hi' ? 'कॉन्फिडेंस: ' : 'Confidence: '}
+                      {open.confidence.score}
+                      {open.confidence.level ? ` · ${open.confidence.level}` : ''}
+                    </p>
+                  )}
                   <div className="mt-4">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-white/55 mb-1.5">
                       {lang === 'hi' ? 'इसका आपके लिए मतलब' : 'What it means for you'}

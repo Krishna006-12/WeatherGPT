@@ -1,0 +1,14 @@
+# WeatherGPT Python Intelligence Service
+# Install: pip install -r requirements.txt
+# Run:     uvicorn app.main:app --host 0.0.0.0 --port 8090
+
+fastapi>=0.115.0,<1.0.0
+uvicorn[standard]>=0.32.0,<1.0.0
+pydantic>=2.9.0,<3.0.0
+pydantic-settings>=2.6.0,<3.0.0
+httpx>=0.27.0,<1.0.0
+python-dotenv>=1.0.0,<2.0.0
+
+# Dev / test
+pytest>=8.3.0,<9.0.0
+pytest-asyncio>=0.24.0,<1.0.0

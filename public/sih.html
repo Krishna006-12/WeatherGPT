@@ -3,100 +3,148 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WeatherGPT · SIH Round 2 Evaluation Matrix</title>
+  <title>WeatherGPT · SIH Evaluation Matrix</title>
+  <meta name="description" content="Static SIH checklist and public API links for WeatherGPT. Readable without JavaScript." />
   <style>
-    :root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #0f172a; background: #f4f7fb; }
-    body { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; line-height: 1.6; }
-    h1 { font-size: 1.6rem; color: #0b1526; margin: 8px 0 12px; }
-    h2 { font-size: 1.15rem; color: #0f3d5c; margin-top: 28px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
-    .badge { display: inline-block; background: #0f3d5c; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
-    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px; margin: 12px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-top: 12px; }
-    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #edf2f7; font-size: 0.9rem; }
-    th { background: #0f3d5c; color: #fff; font-weight: 600; }
-    .ok { color: #2e7d5b; font-weight: 700; }
-    code { background: #e2e8f0; padding: 2px 6px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; }
-    a { color: #3e7ea6; font-weight: 600; text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    :root { font-family: system-ui, sans-serif; color: #0f172a; background: #f4f7fb; }
+    body { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; line-height: 1.5; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; }
+    h2 { font-size: 1.1rem; margin-top: 28px; border-bottom: 1px solid #d7e0eb; padding-bottom: 6px; }
+    .muted { color: #64748b; font-size: 0.95rem; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(15,23,42,.06); }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e9eef5; font-size: 0.92rem; vertical-align: top; }
+    th { background: #0b1526; color: #fff; }
+    tr:last-child td { border-bottom: 0; }
+    code, a code { background: #e9eef5; padding: 2px 6px; border-radius: 6px; font-size: 0.85rem; }
+    a { color: #1d6fb8; }
+    .ok { color: #1f9d48; font-weight: 700; }
+    .part { color: #c47a00; font-weight: 700; }
+    .card { background: #fff; border: 1px solid #e9eef5; border-radius: 12px; padding: 14px 16px; margin: 12px 0; }
+    ul { padding-left: 1.2rem; }
+    .badge { display: inline-block; background: #0b1526; color: #fff; font-size: 0.75rem; padding: 3px 8px; border-radius: 999px; }
   </style>
 </head>
 <body>
-  <span class="badge">Smart India Hackathon 2026</span>
-  <h1>WeatherGPT · Technical Evaluation Matrix</h1>
-  <p style="color: #64748b; font-size: 0.95rem;">
-    Grounded Meteorological & Agricultural Decision Copilot for India.<br/>
-    Read documentation: <a href="/HONESTY.txt"><code>/HONESTY.txt</code></a> · <a href="/IMPACT_AND_SCALE.txt"><code>/IMPACT_AND_SCALE.txt</code></a>
+  <p class="badge">WeatherGPT · Smart India Hackathon</p>
+  <h1>SIH evaluation matrix (static — no JS required)</h1>
+  <p class="muted">
+    Other AIs and judges: if the React app does not load in your crawler, use the
+    <strong>JSON APIs</strong> and this page. Start at
+    <a href="/api/public"><code>/api/public</code></a> ·
+    <a href="/llms.txt"><code>/llms.txt</code></a> ·
+    <a href="/openapi.json"><code>/openapi.json</code></a>
   </p>
 
   <div class="card">
-    <h3 style="margin-top:0;">🏆 Core Innovation Summary</h3>
+    <strong>One-command smoke tests</strong>
     <ul>
-      <li><b>Real-Time Live Met Pipeline:</b> Open-Meteo live API integration for 40+ Indian cities with automatic Geocoding search across India.</li>
-      <li><b>Grounded AI Copilot with Voice:</b> Retrieve-then-phrase RAG engine + Web Speech Recognition (STT) + Speech Synthesis (TTS) in Indian English and Hindi.</li>
-      <li><b>Multi-Model NWP Ensemble:</b> NOAA GFS vs ECMWF IFS vs DWD ICON spread comparison and ensemble confidence calculation.</li>
-      <li><b>Agro-Meteorological Decision Engine:</b> ICAR/IMD Gramin Krishi Mausam guidance (Irrigation schedule, pesticide spray window, soil moisture index).</li>
-      <li><b>Rural Multi-Channel Relay:</b> 160-char DLT-compliant SMS string, Village IVR Loudspeaker announcement audio preview, and WhatsApp broadcast.</li>
-      <li><b>6 Indic Languages:</b> English, हिन्दी, मराठी, বাংলা, తెలుగు, ਪੰਜਾਬੀ.</li>
+      <li><code>/api/public?action=chat&amp;q=rain%20today&amp;lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
+      <li><code>/api/weather?lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
+      <li><code>/api/alerts?lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
+      <li><code>/api/climate?lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
+      <li><code>/api/models?lat=26.45&amp;lon=80.33&amp;name=Kanpur</code></li>
     </ul>
   </div>
 
-  <h2>Feature Checklist vs SIH Problem Statement</h2>
+  <h2>Key features vs WeatherGPT</h2>
   <table>
     <thead>
-      <tr><th>#</th><th>Required Parameter</th><th>Status</th><th>Implementation Detail</th></tr>
+      <tr><th>#</th><th>Required feature</th><th>Status</th><th>Where in product / API</th></tr>
     </thead>
     <tbody>
       <tr>
         <td>1</td>
-        <td>Real-Time Weather Retrieval</td>
-        <td class="ok">✓ COMPLETE</td>
-        <td>Live Open-Meteo Met API + Geocoding Search for any Indian location</td>
+        <td>Real-time weather retrieval</td>
+        <td class="ok">DONE</td>
+        <td>Dashboard · <code>/api/weather</code> · Open-Meteo live</td>
       </tr>
       <tr>
         <td>2</td>
-        <td>Natural Language Conversational AI</td>
-        <td class="ok">✓ COMPLETE</td>
-        <td>Grounded RAG Intent Router with strict Anti-Hallucination guarantees</td>
+        <td>Natural language querying</td>
+        <td class="ok">DONE*</td>
+        <td>Grounded HI/EN NLU always · optional tool-first LLM via <code>POST /api/chat</code> if server key set · <code>/HONESTY.txt</code></td>
       </tr>
       <tr>
         <td>3</td>
-        <td>Multi-Model NWP Comparison</td>
-        <td class="ok">✓ COMPLETE</td>
-        <td>NOAA GFS + ECMWF IFS + DWD ICON multi-model variance score</td>
+        <td>NWP models (GFS/WRF-class)</td>
+        <td class="ok">DONE*</td>
+        <td>Climate tab · <code>/api/models</code> (GFS/ECMWF/ICON/blend). *Cloud NWP ensemble; not on-prem WRF nest.</td>
       </tr>
       <tr>
         <td>4</td>
-        <td>Extreme Weather Early Warning</td>
-        <td class="ok">✓ COMPLETE</td>
-        <td>District Red/Amber Alerts + Live Web Audio Siren + Rural Relay Studio</td>
+        <td>Extreme weather alerts / early warning</td>
+        <td class="ok">DONE</td>
+        <td>Alerts · push notifications · GDACS + flood + model · <code>/api/alerts</code></td>
       </tr>
       <tr>
         <td>5</td>
-        <td>Agromet Advisory Support</td>
-        <td class="ok">✓ COMPLETE</td>
-        <td>Irrigation decision, chemical spray timing, root-zone moisture (0-7cm)</td>
+        <td>Location-based forecast &amp; advisory</td>
+        <td class="ok">DONE</td>
+        <td>Cities search · Farm / Travel / School modes · AI brief</td>
       </tr>
       <tr>
         <td>6</td>
-        <td>Rural / Low-Tech Inclusivity</td>
-        <td class="ok">✓ COMPLETE</td>
-        <td>160-Char DLT SMS payload + Village IVR Loudspeaker audio script</td>
+        <td>Multilingual (Indian languages)</td>
+        <td class="ok">DONE*</td>
+        <td><strong>English + Hindi only</strong> (UI + NLU + voice). Marathi not shipped. *More Indic = i18n packs.</td>
       </tr>
       <tr>
         <td>7</td>
-        <td>Multilingual & Voice Interface</td>
-        <td class="ok">✓ COMPLETE</td>
-        <td>6 Indian languages + Voice STT microphone + Voice TTS audio readout</td>
+        <td>Climate trend &amp; historical analysis</td>
+        <td class="ok">DONE</td>
+        <td>Climate tab charts · <code>/api/climate</code> archive reanalysis</td>
       </tr>
       <tr>
         <td>8</td>
-        <td>Responsive Multi-Device UI</td>
-        <td class="ok">✓ COMPLETE</td>
-        <td>Glassmorphism adaptive UI for Desktop (PC), Tablet, and Mobile</td>
+        <td>Voice-enabled interaction</td>
+        <td class="ok">DONE</td>
+        <td>Mic STT (hi-IN/en-IN) · Listen TTS on AI answers</td>
       </tr>
     </tbody>
   </table>
 
-  <p style="margin-top: 30px;"><a href="/">← Return to WeatherGPT Application</a></p>
+  <h2>Expected solution components</h2>
+  <table>
+    <thead><tr><th>Component</th><th>Status</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Mobile conversational AI platform</td><td class="ok">DONE</td><td>PWA + responsive + chat</td></tr>
+      <tr><td>Backend met databases / APIs</td><td class="ok">DONE</td><td>Vercel serverless proxies to Open-Meteo, GDACS, flood, archive</td></tr>
+      <tr><td>AI/LLM query understanding</td><td class="ok">DONE*</td><td>Default = deterministic grounded NLU. Optional Gemini/OpenAI phrasing on tool JSON only (<code>/api/chat</code>). See <a href="/HONESTY.txt">HONESTY.txt</a>.</td></tr>
+      <tr><td>Real-time data ingestion architecture</td><td class="ok">DONE</td><td>Poll + live proxy + alert monitor ~3 min · NetworkOnly API caching</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Use cases covered</h2>
+  <ul>
+    <li><strong>Farmers</strong> — Farm mode irrigation / spray / soil</li>
+    <li><strong>Travel / urban</strong> — Travel risk, visibility, AQI</li>
+    <li><strong>Schools</strong> — heat / outdoor PE advisories</li>
+    <li><strong>Flood / disaster</strong> — GDACS + flood discharge + push + SMS/WhatsApp/IVR relay text</li>
+    <li><strong>Impact model</strong> — transparent cost/scale notes in <a href="/IMPACT_AND_SCALE.txt">IMPACT_AND_SCALE.txt</a></li>
+    <li><strong>Aviation (lite)</strong> — educational snapshot, not METAR release</li>
+    <li><strong>Researchers</strong> — climate monthly series + model spread</li>
+  </ul>
+
+  <h2>Evaluation parameters</h2>
+  <ul>
+    <li><strong>Accuracy</strong> — answers cite live packs; no invented sources</li>
+    <li><strong>Latency</strong> — edge/serverless JSON; client cache with short TTL</li>
+    <li><strong>Multilingual</strong> — HI/EN UI + voice</li>
+    <li><strong>UI / a11y</strong> — mobile PWA, focus rings, TTS listen</li>
+    <li><strong>Scalability</strong> — stateless APIs, CDN static, no DB required for demo</li>
+    <li><strong>Innovation</strong> — explainable decisions, multi-model NWP, multi-city alert watch, agent-open API</li>
+  </ul>
+
+  <h2>For other AIs that cannot “open the website”</h2>
+  <p>Many agents only fetch HTML/JSON and do not execute React. Tell them:</p>
+  <ol>
+    <li>Fetch <code>/api/public</code> for full endpoint map</li>
+    <li>Fetch <code>/llms.txt</code> for prose instructions</li>
+    <li>Call <code>/api/public?action=chat&amp;...</code> for NL answers</li>
+    <li>Use this <code>/sih.html</code> page for human-readable scoring</li>
+  </ol>
+
+  <p class="muted">College internal first round cleared · Product continues toward national SIH demo reliability.</p>
+  <p><a href="/">← Back to app</a></p>
 </body>
 </html>

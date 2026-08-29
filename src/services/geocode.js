@@ -10,8 +10,14 @@ import {
   registerCity,
   findCityLocal,
   normalizePlaceQuery,
-} from '../data/cities'
-import { isCropToken, detectCrop, allCropStopwords } from '../data/crops'
+} from '../data/cities.js'
+import { isCropToken, detectCrop, allCropStopwords } from '../data/crops.js'
+import {
+  createInflight,
+  createTtlCache,
+  timedFetch,
+  perfMark,
+} from './perf.js'
 
 /** Blocklist: crop names must never become geocode hits / Recent cities */
 const CROP_QUERY_RE = (() => {
@@ -39,8 +45,10 @@ function isCropOnlyQuery(query) {
 }
 
 const GEO_DIRECT = 'https://geocoding-api.open-meteo.com/v1/search'
-const searchCache = new Map()
-const SEARCH_TTL = 15 * 60 * 1000 // shorter — ranking fixes ship faster
+const searchCache = createTtlCache({ name: 'geocode', defaultTtlMs: 20 * 60 * 1000 })
+const geoInflight = createInflight()
+/** Geocode results are stable — 20 min memory TTL (was 15) */
+const SEARCH_TTL = 20 * 60 * 1000
 
 /** Hard locks for famous cities (must beat same-name villages) */
 const WORLD_CITY_LOCK = {
@@ -147,36 +155,37 @@ const FEATURE_SCORE = {
   default: 5,
 }
 
-async function fetchGeocode(q, count, lang) {
+async function fetchGeocode(q, count, lang, signal) {
   const errors = []
-  try {
-    const proxy =
-      `/api/geocode?q=${encodeURIComponent(q)}&count=${count}&language=${encodeURIComponent(lang)}`
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 10000)
-    const res = await fetch(proxy, { signal: ctrl.signal, cache: 'no-cache' })
-    clearTimeout(timer)
-    if (res.ok) {
-      const data = await res.json()
-      if (data?.results) return data
+  const ikey = `geo:${q}|${count}|${lang}`
+  return geoInflight.run(ikey, async () => {
+    try {
+      const proxy =
+        `/api/geocode?q=${encodeURIComponent(q)}&count=${count}&language=${encodeURIComponent(lang)}`
+      const { json, status } = await timedFetch(
+        proxy,
+        { timeoutMs: 8000, signal, cache: 'no-cache' },
+        'geocode',
+      )
+      if (json?.results) return json
+      errors.push('proxy ' + status)
+    } catch (e) {
+      errors.push('proxy ' + e.message)
+      if (signal?.aborted) throw e
     }
-    errors.push('proxy ' + res.status)
-  } catch (e) {
-    errors.push('proxy ' + e.message)
-  }
-  const url =
-    `${GEO_DIRECT}?name=${encodeURIComponent(q)}&count=${count}&language=${lang}&format=json`
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 8000)
-  try {
-    const res = await fetch(url, { signal: ctrl.signal, mode: 'cors', cache: 'no-cache' })
-    clearTimeout(timer)
-    if (!res.ok) throw new Error('geocode ' + res.status)
-    return await res.json()
-  } catch (e) {
-    clearTimeout(timer)
-    throw new Error(errors.concat(e.message).join(' | '))
-  }
+    const url =
+      `${GEO_DIRECT}?name=${encodeURIComponent(q)}&count=${count}&language=${lang}&format=json`
+    try {
+      const { json } = await timedFetch(
+        url,
+        { timeoutMs: 7000, signal, cache: 'no-cache', mode: 'cors' },
+        'geocode',
+      )
+      return json
+    } catch (e) {
+      throw new Error(errors.concat(e.message).join(' | '))
+    }
+  })
 }
 
 const REGION_BY_ADMIN = {
@@ -493,8 +502,8 @@ export async function searchCities(query, { count = 8, indiaOnly = false } = {})
   if (isCropOnlyQuery(q)) return []
 
   const cacheKey = `v4|${q.toLowerCase()}|${count}|${indiaOnly}`
-  const hit = searchCache.get(cacheKey)
-  if (hit && Date.now() - hit.at < SEARCH_TTL) return hit.results
+  const hit = searchCache.get(cacheKey, SEARCH_TTL)
+  if (hit) return hit
 
   const ql = q.toLowerCase()
   const local = CITY_LIST.filter(
@@ -541,14 +550,15 @@ export async function searchCities(query, { count = 8, indiaOnly = false } = {})
     }
 
     const final = filterNoise(merged, ql).slice(0, count)
-    searchCache.set(cacheKey, { at: Date.now(), results: final })
+    searchCache.set(cacheKey, final)
+    perfMark('geocode_search', { q: q.slice(0, 24), n: final.length })
     return final
   } catch (e) {
     console.warn('Geocode failed, local only:', e.message)
     const fallback = local.length
       ? local
       : CITY_LIST.filter((c) => c.name.toLowerCase().startsWith(ql)).slice(0, count)
-    searchCache.set(cacheKey, { at: Date.now(), results: fallback })
+    searchCache.set(cacheKey, fallback)
     return fallback
   }
 }
@@ -646,4 +656,5 @@ export async function resolveCoords(lat, lon) {
 /** Clear search cache (tests / after deploy) */
 export function clearGeocodeCache() {
   searchCache.clear()
+  geoInflight.clear()
 }

@@ -1,10 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Mic, MicOff, Send, Sparkles, ShieldCheck, Volume2, VolumeX, MapPin, Radio } from 'lucide-react'
+import {
+  Mic,
+  MicOff,
+  Send,
+  Sparkles,
+  ShieldCheck,
+  Volume2,
+  VolumeX,
+  MapPin,
+  Radio,
+  Square,
+} from 'lucide-react'
 import MarkdownText from './MarkdownText'
+import ChatIntelligence from './ChatIntelligence'
 import { SeverityDot } from './Icons'
 import { tr } from '../data/i18n'
 import { speakText, stopSpeaking, ttsSupported, isSpeaking } from '../services/voice'
+import { chatStageLabels } from '../services/chatClient'
 
 export default function ChatTab({
   lang,
@@ -13,22 +26,35 @@ export default function ChatTab({
   loading,
   weather,
   demoQueries,
+  chatStage = null,
+  onCancel = null,
+  streamingId = null,
 }) {
   const [input, setInput] = useState('')
   const [listening, setListening] = useState(false)
   const [speakingId, setSpeakingId] = useState(null)
   const bottomRef = useRef(null)
   const recogRef = useRef(null)
+  const submittingRef = useRef(false)
+  const labels = chatStageLabels(lang)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+  }, [messages, loading, chatStage])
 
   const submit = (text) => {
     const q = (text ?? input).trim()
-    if (!q || loading) return
+    if (!q || loading || submittingRef.current) return
+    submittingRef.current = true
     setInput('')
-    onSend(q)
+    try {
+      onSend(q)
+    } finally {
+      // unlock after tick so rapid double-Enter cannot double-fire
+      setTimeout(() => {
+        submittingRef.current = false
+      }, 400)
+    }
   }
 
   const toggleVoice = () => {
@@ -93,6 +119,10 @@ export default function ChatTab({
   const homeCond =
     lang === 'hi' ? weather?.current?.condition_hi || weather?.current?.condition : weather?.current?.condition
 
+  const stageText =
+    (chatStage && labels[chatStage]) ||
+    (loading ? labels.analyze : null)
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {weather?.current && (
@@ -155,8 +185,9 @@ export default function ChatTab({
                   <button
                     key={q}
                     type="button"
+                    disabled={loading}
                     onClick={() => submit(q)}
-                    className="text-left text-[13px] px-3.5 py-3 rounded-xl bg-white/6 border border-white/10 text-white/85 hover:border-sky-400/40 hover:bg-white/10 transition pressable focus-ring"
+                    className="text-left text-[13px] px-3.5 py-3 rounded-xl bg-white/6 border border-white/10 text-white/85 hover:border-sky-400/40 hover:bg-white/10 transition pressable focus-ring disabled:opacity-50"
                   >
                     <span className="text-sky-300 font-mono text-[11px] mr-1">“</span>
                     {q}
@@ -174,19 +205,36 @@ export default function ChatTab({
               lang={lang}
               speaking={speakingId === m.id}
               onSpeak={() => toggleSpeak(m)}
+              isStreaming={streamingId != null && m.id === streamingId}
             />
           ))}
 
           {loading && (
-            <div className="flex justify-start animate-bubble">
-              <div className="dash-glass rounded-2xl rounded-bl-md px-5 py-4 max-w-md">
-                <div className="flex items-center gap-2 text-[12px] text-white/50">
-                  <span className="inline-flex gap-1">
+            <div className="flex justify-start animate-bubble" role="status" aria-live="polite">
+              <div className="dash-glass rounded-2xl rounded-bl-md px-5 py-3.5 max-w-md chat-stage-card">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex gap-1 shrink-0" aria-hidden>
                     <span className="w-1.5 h-1.5 rounded-full bg-sky-300 typing-dot" />
                     <span className="w-1.5 h-1.5 rounded-full bg-sky-300 typing-dot" />
                     <span className="w-1.5 h-1.5 rounded-full bg-sky-300 typing-dot" />
                   </span>
-                  {tr(lang, 'thinking')}
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-white/80">{stageText}</p>
+                    <p className="text-[10px] text-white/35 mt-0.5">
+                      {lang === 'hi' ? 'प्रगति % नहीं — असली चरण' : 'No fake % — real pipeline stage'}
+                    </p>
+                  </div>
+                  {onCancel && (
+                    <button
+                      type="button"
+                      onClick={onCancel}
+                      className="ml-auto shrink-0 text-[11px] font-semibold text-alert-amber inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-white/12 hover:bg-white/8 focus-ring"
+                      aria-label={lang === 'hi' ? 'रद्द करें' : 'Cancel'}
+                    >
+                      <Square className="w-3 h-3" />
+                      {lang === 'hi' ? 'रद्द' : 'Cancel'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -201,8 +249,10 @@ export default function ChatTab({
             {messages[messages.length - 1].chips.map((c) => (
               <button
                 key={c}
+                type="button"
+                disabled={loading}
                 onClick={() => submit(c)}
-                className="shrink-0 text-[12px] px-3 py-1.5 rounded-full bg-sky-400/20 border border-white/15 text-white/90 hover:bg-sky-400/30 transition"
+                className="shrink-0 text-[12px] px-3 py-1.5 rounded-full bg-sky-400/20 border border-white/15 text-white/90 hover:bg-sky-400/30 transition focus-ring disabled:opacity-50"
               >
                 {c}
               </button>
@@ -217,12 +267,14 @@ export default function ChatTab({
             <button
               type="button"
               onClick={toggleVoice}
+              disabled={loading}
               title={tr(lang, 'voiceHint')}
-              className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition pressable ${
+              className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition pressable focus-ring ${
                 listening
                   ? 'bg-alert-red text-white pulse-alert'
                   : 'bg-white/8 text-white/60 hover:bg-white/12'
               }`}
+              aria-label={listening ? 'Stop voice' : 'Voice input'}
             >
               {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
@@ -233,20 +285,36 @@ export default function ChatTab({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
+                  if (loading) return
                   submit()
                 }
               }}
               placeholder={listening ? tr(lang, 'listening') : tr(lang, 'typePlaceholder')}
               className="flex-1 resize-none bg-transparent text-[14px] text-white placeholder:text-white/35 py-2.5 outline-none max-h-28"
+              aria-label={lang === 'hi' ? 'संदेश' : 'Message'}
+              disabled={false}
             />
-            <button
-              type="button"
-              onClick={() => submit()}
-              disabled={!input.trim() || loading}
-              className="shrink-0 w-10 h-10 rounded-xl bg-sky-400 text-navy-950 flex items-center justify-center hover:bg-sky-300 disabled:opacity-40 transition pressable"
-            >
-              <Send className="w-4 h-4" />
-            </button>
+            {loading ? (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="shrink-0 w-10 h-10 rounded-xl bg-white/10 text-alert-amber flex items-center justify-center hover:bg-white/15 transition pressable focus-ring"
+                aria-label={lang === 'hi' ? 'रद्द करें' : 'Cancel request'}
+                title={lang === 'hi' ? 'रद्द करें' : 'Cancel'}
+              >
+                <Square className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => submit()}
+                disabled={!input.trim()}
+                className="shrink-0 w-10 h-10 rounded-xl bg-sky-400 text-navy-950 flex items-center justify-center hover:bg-sky-300 disabled:opacity-40 transition pressable focus-ring"
+                aria-label={lang === 'hi' ? 'भेजें' : 'Send'}
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            )}
           </div>
           <p className="text-[10px] text-white/35 text-center mt-1.5 flex items-center justify-center gap-1">
             <ShieldCheck className="w-3 h-3 text-mint-300" />
@@ -260,13 +328,18 @@ export default function ChatTab({
   )
 }
 
-function MessageBubble({ m, lang, speaking, onSpeak }) {
+function MessageBubble({ m, lang, speaking, onSpeak, isStreaming }) {
   const isUser = m.role === 'user'
+  const err = m.errorCode
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+      initial={
+        typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+          ? false
+          : { opacity: 0, y: 10, scale: 0.99 }
+      }
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div
@@ -279,7 +352,9 @@ function MessageBubble({ m, lang, speaking, onSpeak }) {
               ? 'dash-glass border-alert-amber/35 rounded-bl-md px-4 sm:px-5 py-3.5 sm:py-4'
               : m.type === 'alert'
                 ? 'dash-glass border-alert-red/35 rounded-bl-md px-4 sm:px-5 py-3.5 sm:py-4'
-                : 'dash-glass rounded-bl-md px-4 sm:px-5 py-3.5 sm:py-4'
+                : err
+                  ? 'dash-glass border-alert-amber/30 rounded-bl-md px-4 sm:px-5 py-3.5 sm:py-4'
+                  : 'dash-glass intel-bubble rounded-bl-md px-4 sm:px-5 py-3.5 sm:py-4'
         }`}
       >
         {!isUser && m.type === 'alert' && m.alertData && (
@@ -300,11 +375,21 @@ function MessageBubble({ m, lang, speaking, onSpeak }) {
         {isUser ? (
           <p className="text-[14px] leading-relaxed whitespace-pre-wrap font-medium">{m.text}</p>
         ) : (
-          <div className="chat-md-dark">
-            <MarkdownText text={m.text} className="text-[14px] text-white/90" />
+          <div className={`chat-md-dark ${isStreaming ? 'chat-streaming' : ''}`}>
+            <ChatIntelligence
+              text={m.text}
+              /* During progressive reveal, text-only so cards don't dump full answer early */
+              structured={isStreaming ? null : m.structured}
+              meta={{ confidence: m.confidence, source: m.source, type: m.type, lang }}
+            />
+            {isStreaming && (
+              <span className="chat-caret" aria-hidden>
+                ▍
+              </span>
+            )}
           </div>
         )}
-        {!isUser && (
+        {!isUser && !isStreaming && (
           <div className="mt-3 pt-2.5 border-t border-white/10 flex flex-wrap items-center gap-2">
             {m.source && (
               <span className="text-[10px] text-white/45 font-mono bg-white/8 px-1.5 py-0.5 rounded max-w-full break-words">
@@ -313,7 +398,8 @@ function MessageBubble({ m, lang, speaking, onSpeak }) {
             )}
             {typeof m.confidence === 'number' && (
               <span className="text-[10px] text-mint-300 font-semibold">
-                {tr(lang, 'confidence')} {Math.round(m.confidence * 100)}%
+                {tr(lang, 'confidence')}{' '}
+                {Math.round(m.confidence <= 1 ? m.confidence * 100 : m.confidence)}%
               </span>
             )}
             <button

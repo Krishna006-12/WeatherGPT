@@ -1,8 +1,18 @@
 /**
  * Air quality via Open-Meteo Air Quality API (free, no key)
+ * TTL ~20min (AQI changes slowly); coalesce + abort + race direct/proxy
  */
 
-const cache = new Map()
+import {
+  createInflight,
+  createTtlCache,
+  timedFetch,
+  raceFirstOk,
+  perfMark,
+} from './perf'
+
+const cache = createTtlCache({ name: 'aqi', defaultTtlMs: 20 * 60 * 1000 })
+const inflight = createInflight()
 const TTL = 20 * 60 * 1000
 
 function band(aqi) {
@@ -50,71 +60,137 @@ function advice(level, lang) {
   return lang === 'hi' ? row.hi : row.en
 }
 
-export async function fetchAQI(lat, lon) {
-  const key = `${lat.toFixed(2)},${lon.toFixed(2)}`
-  const hit = cache.get(key)
-  if (hit && Date.now() - hit.at < TTL) return hit.data
+function parseAqiJson(json) {
+  const cur = json.current || {}
+  const us = cur.us_aqi
+  const eu = cur.european_aqi
+  const aqi = us != null ? us : eu
+  const scale = us != null ? 'US AQI' : eu != null ? 'EAQI' : '—'
+  const b = band(aqi)
+  return {
+    live: true,
+    aqi: aqi != null ? Math.round(aqi) : null,
+    scale,
+    band: b,
+    pm25: cur.pm2_5 != null ? +Number(cur.pm2_5).toFixed(1) : null,
+    pm10: cur.pm10 != null ? +Number(cur.pm10).toFixed(1) : null,
+    no2: cur.nitrogen_dioxide != null ? +Number(cur.nitrogen_dioxide).toFixed(1) : null,
+    o3: cur.ozone != null ? +Number(cur.ozone).toFixed(1) : null,
+    so2: cur.sulphur_dioxide != null ? +Number(cur.sulphur_dioxide).toFixed(1) : null,
+    co: cur.carbon_monoxide != null ? +Number(cur.carbon_monoxide).toFixed(0) : null,
+    fetchedAt: Date.now(),
+    advice: (lang) => advice(b.level, lang),
+  }
+}
 
-  const urls = [
-    // Prefer European AQI + US AQI + PM
-    `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=european_aqi,us_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone&timezone=auto`,
-    `/api/aqi?lat=${lat}&lon=${lon}`,
-  ]
+/**
+ * @param {number} lat
+ * @param {number} lon
+ * @param {{ signal?: AbortSignal, force?: boolean }} [opts]
+ */
+export async function fetchAQI(lat, lon, opts = {}) {
+  const { signal, force = false } = opts
+  const key = `${Number(lat).toFixed(2)},${Number(lon).toFixed(2)}`
 
-  let lastErr = null
-  for (const url of urls) {
+  if (!force) {
+    const hit = cache.get(key, TTL)
+    if (hit) return hit
+  }
+
+  return inflight.run(`aqi:${key}`, async () => {
+    // re-check after coalesce wait
+    if (!force) {
+      const hit = cache.get(key, TTL)
+      if (hit) return hit
+    }
+
+    const direct =
+      `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}` +
+      `&current=european_aqi,us_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone&timezone=auto`
+    const proxy = `/api/aqi?lat=${lat}&lon=${lon}`
+
+    let lastErr = null
     try {
-      const ctrl = new AbortController()
-      const t = setTimeout(() => ctrl.abort(), 10000)
-      const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } })
-      clearTimeout(t)
-      const text = await res.text()
-      if (text.trimStart().startsWith('<')) throw new Error('HTML')
-      if (!res.ok) throw new Error('HTTP ' + res.status)
-      const json = JSON.parse(text)
-      const cur = json.current || {}
-      const us = cur.us_aqi
-      const eu = cur.european_aqi
-      // Prefer US AQI for India-familiar scale; fallback EU
-      const aqi = us != null ? us : eu
-      const scale = us != null ? 'US AQI' : eu != null ? 'EAQI' : '—'
-      const b = band(aqi)
-      const data = {
-        live: true,
-        aqi: aqi != null ? Math.round(aqi) : null,
-        scale,
-        band: b,
-        pm25: cur.pm2_5 != null ? +Number(cur.pm2_5).toFixed(1) : null,
-        pm10: cur.pm10 != null ? +Number(cur.pm10).toFixed(1) : null,
-        no2: cur.nitrogen_dioxide != null ? +Number(cur.nitrogen_dioxide).toFixed(1) : null,
-        o3: cur.ozone != null ? +Number(cur.ozone).toFixed(1) : null,
-        so2: cur.sulphur_dioxide != null ? +Number(cur.sulphur_dioxide).toFixed(1) : null,
-        co: cur.carbon_monoxide != null ? +Number(cur.carbon_monoxide).toFixed(0) : null,
-        fetchedAt: Date.now(),
-        advice: (lang) => advice(b.level, lang),
+      const winner = await raceFirstOk(
+        [
+          async () => {
+            const { json } = await timedFetch(direct, { timeoutMs: 8000, signal, cache: 'no-cache' }, 'aqi')
+            if (!json?.current) return null
+            return parseAqiJson(json)
+          },
+          async () => {
+            const { json } = await timedFetch(proxy, { timeoutMs: 7000, signal, cache: 'no-cache' }, 'aqi')
+            if (!json?.current && json?.aqi == null && !json?.live) {
+              // proxy may already return shaped payload
+              if (json?.aqi != null || json?.band) {
+                return {
+                  live: !!json.live,
+                  aqi: json.aqi ?? null,
+                  scale: json.scale || '—',
+                  band: json.band || band(json.aqi),
+                  pm25: json.pm25 ?? null,
+                  pm10: json.pm10 ?? null,
+                  no2: json.no2 ?? null,
+                  o3: json.o3 ?? null,
+                  so2: json.so2 ?? null,
+                  co: json.co ?? null,
+                  fetchedAt: Date.now(),
+                  advice: (lang) => advice((json.band || band(json.aqi)).level, lang),
+                }
+              }
+              return null
+            }
+            if (json?.current) return parseAqiJson(json)
+            return null
+          },
+        ],
+        { signal },
+      )
+      if (winner) {
+        cache.set(key, winner)
+        perfMark('aqi_ok', { key })
+        return winner
       }
-      cache.set(key, { at: Date.now(), data })
-      return data
     } catch (e) {
       lastErr = e
+      if (signal?.aborted || /abort/i.test(String(e.message || ''))) throw e
     }
-  }
 
-  const data = {
-    live: false,
-    aqi: null,
-    scale: '—',
-    band: band(null),
-    pm25: null,
-    pm10: null,
-    no2: null,
-    o3: null,
-    so2: null,
-    co: null,
-    fetchedAt: Date.now(),
-    error: lastErr?.message,
-    advice: (lang) => advice('unknown', lang),
-  }
-  cache.set(key, { at: Date.now(), data })
-  return data
+    // sequential last resort
+    for (const url of [direct, proxy]) {
+      try {
+        const { json } = await timedFetch(url, { timeoutMs: 10000, signal, cache: 'no-cache' }, 'aqi')
+        const data = json?.current ? parseAqiJson(json) : null
+        if (data) {
+          cache.set(key, data)
+          return data
+        }
+      } catch (e) {
+        lastErr = e
+      }
+    }
+
+    const data = {
+      live: false,
+      aqi: null,
+      scale: '—',
+      band: band(null),
+      pm25: null,
+      pm10: null,
+      no2: null,
+      o3: null,
+      so2: null,
+      co: null,
+      fetchedAt: Date.now(),
+      error: lastErr?.message,
+      advice: (lang) => advice('unknown', lang),
+    }
+    cache.set(key, data)
+    return data
+  })
+}
+
+export function clearAqiCache() {
+  cache.clear()
+  inflight.clear()
 }

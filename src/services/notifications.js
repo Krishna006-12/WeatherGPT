@@ -7,6 +7,7 @@
  */
 
 import { CITIES, getCity } from '../data/cities'
+import { createTtlCache, createInflight, perfMark } from './perf'
 
 const SEEN_KEY = 'wgpt_alert_seen_v1'
 const WATCH_KEY = 'wgpt_alert_watch_v1'
@@ -197,6 +198,10 @@ export async function notifyNewAlerts(alerts, { lang = 'en', minSeverity = 'yell
 /**
  * Fetch live alerts for watch cities (+ optional focus city).
  */
+const alertsFeedCache = createTtlCache({ name: 'alerts', defaultTtlMs: 90 * 1000 })
+const alertsInflight = createInflight()
+const ALERTS_FEED_TTL = 90 * 1000
+
 export async function fetchLiveAlertsFeed({
   homeCityId = 'kanpur',
   focusCity = null,
@@ -217,67 +222,85 @@ export async function fetchLiveAlertsFeed({
     return { ok: false, alerts: [], error: 'no points' }
   }
 
-  const pointsParam = points
-    .slice(0, 6)
-    .map((c) => `${c.lat},${c.lon},${encodeURIComponent(c.name || c.id)}`)
-    .join('|')
+  const cacheKey =
+    points
+      .slice(0, 6)
+      .map((c) => `${c.id || c.name}:${Number(c.lat).toFixed(2)},${Number(c.lon).toFixed(2)}`)
+      .join('|') + `|r${radiusKm}`
 
-  // Prefer serverless; fallback to client-side Open-Meteo-only if HTML/404
-  const urls = [
-    `/api/alerts?points=${pointsParam}&radiusKm=${radiusKm}`,
-  ]
+  const cached = alertsFeedCache.get(cacheKey, ALERTS_FEED_TTL)
+  if (cached) return cached
 
-  let lastErr = null
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, {
-        signal,
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      })
-      const text = await res.text()
-      if (text.trimStart().startsWith('<')) throw new Error('HTML (API missing)')
-      if (!res.ok) throw new Error('HTTP ' + res.status)
-      const json = JSON.parse(text)
-      if (!json || !Array.isArray(json.alerts)) throw new Error('bad payload')
-      return {
-        ok: !!json.ok,
-        live: !!json.live,
-        alerts: json.alerts,
-        points: json.points || [],
-        sources: json.sources || [],
-        fetchedAt: json.fetchedAt || Date.now(),
-        radiusKm: json.radiusKm || radiusKm,
+  return alertsInflight.run(`alerts:${cacheKey}`, async () => {
+    const hit2 = alertsFeedCache.get(cacheKey, ALERTS_FEED_TTL)
+    if (hit2) return hit2
+
+    const pointsParam = points
+      .slice(0, 6)
+      .map((c) => `${c.lat},${c.lon},${encodeURIComponent(c.name || c.id)}`)
+      .join('|')
+
+    // Prefer serverless; fallback to client-side Open-Meteo-only if HTML/404
+    const urls = [`/api/alerts?points=${pointsParam}&radiusKm=${radiusKm}`]
+
+    let lastErr = null
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, {
+          signal,
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        })
+        const text = await res.text()
+        if (text.trimStart().startsWith('<')) throw new Error('HTML (API missing)')
+        if (!res.ok) throw new Error('HTTP ' + res.status)
+        const json = JSON.parse(text)
+        if (!json || !Array.isArray(json.alerts)) throw new Error('bad payload')
+        const out = {
+          ok: !!json.ok,
+          live: !!json.live,
+          alerts: json.alerts,
+          points: json.points || [],
+          sources: json.sources || [],
+          fetchedAt: json.fetchedAt || Date.now(),
+          radiusKm: json.radiusKm || radiusKm,
+        }
+        alertsFeedCache.set(cacheKey, out)
+        perfMark('alerts_feed', { n: out.alerts.length, live: out.live })
+        return out
+      } catch (e) {
+        lastErr = e
+        if (signal?.aborted) throw e
       }
-    } catch (e) {
-      lastErr = e
     }
-  }
 
-  // Client-side fallback: meteo-only for focus / home (no GDACS without API)
-  try {
-    const c = points[0]
-    const wxUrl =
-      `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}` +
-      `&current=weather_code,precipitation,wind_speed_10m` +
-      `&daily=weather_code,precipitation_sum,precipitation_probability_max,wind_speed_10m_max` +
-      `&timezone=auto&forecast_days=5`
-    const res = await fetch(wxUrl, { signal, headers: { Accept: 'application/json' } })
-    const data = await res.json()
-    const alerts = clientMeteoAlerts(data, c)
-    return {
-      ok: true,
-      live: true,
-      alerts,
-      points: [{ place: c.name, lat: c.lat, lon: c.lon, alertCount: alerts.length }],
-      sources: [{ name: 'Open-Meteo (direct fallback)', role: 'Meteo thresholds only' }],
-      fetchedAt: Date.now(),
-      fallback: true,
-      error: lastErr?.message,
+    // Client-side fallback: meteo-only for focus / home (no GDACS without API)
+    try {
+      const c = points[0]
+      const wxUrl =
+        `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}` +
+        `&current=weather_code,precipitation,wind_speed_10m` +
+        `&daily=weather_code,precipitation_sum,precipitation_probability_max,wind_speed_10m_max` +
+        `&timezone=auto&forecast_days=5`
+      const res = await fetch(wxUrl, { signal, headers: { Accept: 'application/json' } })
+      const data = await res.json()
+      const alerts = clientMeteoAlerts(data, c)
+      const out = {
+        ok: true,
+        live: true,
+        alerts,
+        points: [{ place: c.name, lat: c.lat, lon: c.lon, alertCount: alerts.length }],
+        sources: [{ name: 'Open-Meteo (direct fallback)', role: 'Meteo thresholds only' }],
+        fetchedAt: Date.now(),
+        fallback: true,
+        error: lastErr?.message,
+      }
+      alertsFeedCache.set(cacheKey, out)
+      return out
+    } catch (e) {
+      return { ok: false, alerts: [], error: e.message || lastErr?.message }
     }
-  } catch (e) {
-    return { ok: false, alerts: [], error: e.message || lastErr?.message }
-  }
+  })
 }
 
 function clientMeteoAlerts(data, city) {

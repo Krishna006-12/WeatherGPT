@@ -814,10 +814,22 @@ export function buildLockedWeatherFacts(wx, { model = null } = {}) {
       model: model || wx.model || wx.liveSource || 'open-meteo',
       api: 'Open-Meteo Forecast API (model grid — not a personal weather station)',
       api_docs: 'https://open-meteo.com/en/docs',
+      // Confidence is computed server-side (deterministic). LLM must copy, never invent.
+      confidence: wx.confidence
+        ? {
+            score: wx.confidence.score,
+            level: wx.confidence.level,
+            engine: wx.confidence.engine || 'weathergpt.confidence.v1',
+            reasons: Array.isArray(wx.confidence.reasons)
+              ? wx.confidence.reasons.slice(0, 8)
+              : [],
+          }
+        : null,
       limitations: [
         'Grid-model forecast; local street-level weather can differ.',
         'Not an official IMD warning feed unless explicitly marked.',
         'Rain % is day-representative calibrated probability — separate from mm amount.',
+        'Confidence score is deterministic from model agreement — not LLM-generated.',
         'WMO hail-class codes mean hail possible in model class — not confirmed hail on ground.',
       ],
       alert_philosophy: 'IMD colour framing for UX; official bulletins need IMD/state sources.',
@@ -911,6 +923,7 @@ export function factsToLlmToolJson(facts) {
       model: facts.meta.model,
       api: facts.meta.api,
       live: facts.meta.live,
+      confidence: facts.meta.confidence || null,
       limitations: facts.meta.limitations,
     },
     current: facts.current,
