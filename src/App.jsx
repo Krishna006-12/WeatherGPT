@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   CloudSun,
   MessageCircle,
@@ -209,6 +209,7 @@ function saveRecent(list) {
 }
 
 export default function App() {
+  const prefersReducedMotion = useReducedMotion()
   const [prefs, setPrefs] = useState(() => loadPrefs())
   const lang = prefs.lang || 'en'
   const [tab, setTab] = useState('home')
@@ -1282,11 +1283,16 @@ export default function App() {
           </header>
 
           <main className="flex-1 min-h-0 relative flex flex-col bg-transparent">
-            {/* Fast tab switch: no exit animation (cheaper paint on low-end phones) */}
-            <div
-              key={tab + (tab === 'modes' ? modePanel : '') + (tab === 'more' ? morePanel : '')}
-              className="flex-1 min-h-0 flex flex-col animate-bubble"
-            >
+            {/* A short, spring-like transition makes navigation feel native without blocking input. */}
+            <AnimatePresence initial={false} mode="wait">
+              <motion.div
+                key={tab + (tab === 'modes' ? modePanel : '') + (tab === 'more' ? morePanel : '')}
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 10, scale: 0.992 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={prefersReducedMotion ? undefined : { opacity: 0, y: -6, scale: 0.996 }}
+                transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 390, damping: 34, mass: 0.75 }}
+                className="tab-stage flex-1 min-h-0 flex flex-col"
+              >
                 {tab === 'home' && (
                   <DashboardTab
                     lang={lang}
@@ -1420,7 +1426,8 @@ export default function App() {
                     </div>
                   </div>
                 )}
-            </div>
+              </motion.div>
+            </AnimatePresence>
           </main>
 
           {/* Mobile bottom nav — liquid glass */}
