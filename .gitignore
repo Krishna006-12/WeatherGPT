@@ -52,6 +52,3 @@ python-intel/.venv/
 python-intel/.env
 python-intel/**/__pycache__/
 python-intel/.pytest_cache/
-
-.vercel
-.env*

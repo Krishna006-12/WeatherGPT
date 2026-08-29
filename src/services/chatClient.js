@@ -182,6 +182,10 @@ export async function postChatApi(payload, { signal, timeoutMs = CHAT_TIMEOUT_MS
 /**
  * Normalize assistant payload into structured chat fields for UI cards.
  * Does not invent weather numbers — only maps existing markdown / meta.
+ *
+ * Critical: never treat bare ## City title as the whole answer. Trivial API
+ * replies are often "## Kanpur\n\n**Now: 32°C**…" with no ### sections — the
+ * body must stay visible (as summary/weather_facts or plain markdown).
  */
 export function structureAssistantResult(result, lang = 'en') {
   if (!result || typeof result !== 'object') {
@@ -194,28 +198,110 @@ export function structureAssistantResult(result, lang = 'en') {
   }
   const text = String(result.text || '')
   const sections = splitMarkdownSections(text)
-  const structured = {
-    summary: pickSection(sections, ['summary', 'सारांश', 'context', 'संदर्भ', "what's happening", 'overview']) ||
-      sections.title ||
-      null,
-    weather_facts:
-      pickSection(sections, ['weather', 'facts', 'मौसम', 'impact', 'प्रभाव', 'signals', 'संकेत', 'outlook', 'आउटलुक']) ||
-      null,
-    recommendation:
-      pickSection(sections, ['recommend', 'action', 'advice', 'सिफारिश', 'करें', 'what you should', 'irrigation', 'सिंचाई']) ||
-      null,
-    risk: pickSection(sections, ['risk', 'जोखिम', 'alert', 'caution', 'सावधान']) || null,
-    confidence:
-      result.confidence != null
-        ? Math.round(Number(result.confidence) * (Number(result.confidence) <= 1 ? 100 : 1))
-        : null,
-    sources: result.source || pickSection(sections, ['source', 'स्रोत', 'honesty', 'ईमानदारी']) || null,
-    timing: pickSection(sections, ['timing', 'समय', 'when', 'window']) || null,
+
+  const fromHeading = {
+    summary: pickSection(sections, [
+      'summary',
+      'सारांश',
+      'context',
+      'संदर्भ',
+      "what's happening",
+      'overview',
+      'executive',
+      'अभी',
+      'right now',
+    ]),
+    weather_facts: pickSection(sections, [
+      'weather facts',
+      'weather',
+      'facts',
+      'मौसम',
+      'impact',
+      'प्रभाव',
+      'signals',
+      'संकेत',
+      'outlook',
+      'आउटलुक',
+      'details',
+      'तथ्य',
+    ]),
+    recommendation: pickSection(sections, [
+      'recommend',
+      'action',
+      'advice',
+      'सिफारिश',
+      'करें',
+      'what you should',
+      'irrigation',
+      'सिंचाई',
+      'next step',
+      'अगला',
+    ]),
+    risk: pickSection(sections, ['risk', 'जोखिम', 'alert', 'caution', 'सावधान', 'warning']),
+    timing: pickSection(sections, ['timing', 'समय', 'when', 'window']),
   }
 
-  // Ensure markdown still has readable structure for ChatIntelligence
+  // Body under ## title (no ###) — this is the real weather brief
+  const preamble = String(sections.preamble || '').trim()
+  const hasRealSections = Object.values(fromHeading).some((v) => v && String(v).trim())
+
+  let summary = fromHeading.summary || null
+  let weather_facts = fromHeading.weather_facts || null
+
+  if (!hasRealSections && preamble) {
+    // "## Kanpur\n\n**Now: 32°C**…" → put full body in summary (not the title alone)
+    summary = preamble
+  } else if (summary && preamble && preamble.length > String(summary).length + 20) {
+    // Prefer richer preamble if summary heading was thin
+    if (String(summary).trim().length < 40) summary = preamble
+  } else if (!summary && !weather_facts && preamble) {
+    summary = preamble
+  }
+
+  // Never use bare place title as summary — that hid all weather in the UI
+  if (summary && isBarePlaceTitle(summary, sections.title)) {
+    summary = preamble || null
+  }
+  if (summary && isBarePlaceTitle(summary, sections.title) && !preamble) {
+    summary = null
+  }
+
+  const confidence =
+    result.confidence != null
+      ? Math.round(Number(result.confidence) * (Number(result.confidence) <= 1 ? 100 : 1))
+      : null
+  const sources =
+    result.source || pickSection(sections, ['source', 'स्रोत', 'honesty', 'ईमानदारी']) || null
+
+  const structured = {
+    summary,
+    weather_facts,
+    recommendation: fromHeading.recommendation || null,
+    risk: fromHeading.risk || null,
+    timing: fromHeading.timing || null,
+    confidence,
+    sources,
+    title: sections.title || null,
+  }
+
+  // Only attach structured cards when there is real answer body —
+  // confidence+sources alone must NOT flip the UI into empty shells
+  const contentful = [structured.summary, structured.weather_facts, structured.recommendation, structured.risk, structured.timing].some(
+    (v) => v && String(v).trim().length >= 8,
+  )
+
   let outText = text
-  if (!/^##\s/m.test(outText) && (structured.summary || structured.recommendation || structured.risk)) {
+  // If we only have free-form body, keep original markdown for MarkdownText
+  if (!contentful) {
+    return {
+      ...result,
+      text: outText,
+      structured: null,
+    }
+  }
+
+  // Optional: normalize to ### cards only when original had no usable markdown body
+  if (!/^##\s/m.test(outText) && contentful) {
     outText = ensureStructuredMarkdown(structured, lang, result)
   }
 
@@ -226,12 +312,29 @@ export function structureAssistantResult(result, lang = 'en') {
   }
 }
 
+/** Title-only strings like "Kanpur" / "Dubai" must not replace the weather body */
+function isBarePlaceTitle(value, title) {
+  const v = String(value || '')
+    .trim()
+    .replace(/\*\*/g, '')
+  if (!v) return true
+  if (v.length > 48) return false
+  // single token / short place-like, no digits (temps), no weather words
+  if (/\d/.test(v)) return false
+  if (/°|temp|rain|humid|wind|pop|mm|forecast|overcast|clear|cloud|barish|mausam|°c/i.test(v)) return false
+  if (title && v.toLowerCase() === String(title).replace(/^🌾\s*/, '').trim().toLowerCase()) return true
+  // one or two words, no punctuation heavy content
+  if (/^[\p{L}\s.'-]{2,40}$/u.test(v) && v.split(/\s+/).length <= 3) return true
+  return false
+}
+
 function splitMarkdownSections(text) {
   const lines = String(text || '').split('\n')
   let title = null
   const map = {}
   let cur = null
   let buf = []
+  const preambleLines = []
   const flush = () => {
     if (cur) map[cur.toLowerCase()] = buf.join('\n').trim()
     buf = []
@@ -247,9 +350,10 @@ function splitMarkdownSections(text) {
       continue
     }
     if (cur) buf.push(line)
+    else if (line.trim()) preambleLines.push(line)
   }
   flush()
-  return { title, map }
+  return { title, map, preamble: preambleLines.join('\n').trim() }
 }
 
 function pickSection(sections, keys) {

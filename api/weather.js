@@ -2,9 +2,9 @@
  * Vercel Serverless — LIVE weather proxy + multi-source alerts + multi-model summary
  * GET /api/weather?lat=26.45&lon=80.33&tz=Asia/Kolkata&name=Kanpur&multimodel=1
  *
- * Primary forecast remains Open-Meteo default (best_match behaviour) so existing
- * 7-day UI stays intact. Multi-model is aggregated server-side and attached as
- * `multi_model` — frontend must not fan-out to model endpoints itself.
+ * When OPENWEATHER_API_KEY is set on Vercel, OpenWeatherMap is tried FIRST
+ * (One Call 3.0 → free 2.5 current+forecast). Open-Meteo remains fallback + multi-model.
+ * Key never leaves the server — never put it in Vite frontend env.
  */
 
 import {
@@ -18,6 +18,10 @@ import {
   floodToRiskSignal,
   normalizeAlert,
 } from './_lib/alertEngine.js'
+import {
+  fetchOpenWeatherForecast,
+  getOpenWeatherKey,
+} from './_lib/openWeather.js'
 
 const UA = { Accept: 'application/json', 'User-Agent': 'WeatherGPT/2.2 (hackathon)' }
 
@@ -196,11 +200,34 @@ export default async function handler(req, res) {
     const errors = []
     let forecast = null
     let source = 'open-meteo'
+    let owMeta = null
+    const hasOw = !!getOpenWeatherKey()
 
-    try {
-      forecast = await fetchJson(buildForecastUrl(lat, lon, tz), 14000)
-    } catch (e) {
-      errors.push('forecast1: ' + e.message)
+    // ── Primary: OpenWeatherMap when key present (real live obs + forecast) ──
+    if (hasOw) {
+      try {
+        const ow = await fetchOpenWeatherForecast(lat, lon, { timeoutMs: 12000 })
+        owMeta = ow?.meta || null
+        if (ow?.forecast?.current) {
+          forecast = ow.forecast
+          source =
+            ow.meta?.api === 'onecall_3.0' ? 'openweather-onecall' : 'openweather-2.5'
+        } else if (ow?.meta?.error) {
+          errors.push('openweather: ' + ow.meta.error)
+        }
+      } catch (e) {
+        errors.push('openweather: ' + (e.message || e))
+      }
+    }
+
+    // ── Fallback / default: Open-Meteo (no key required) ──
+    if (!forecast) {
+      try {
+        forecast = await fetchJson(buildForecastUrl(lat, lon, tz), 14000)
+        source = hasOw ? 'open-meteo-fallback' : 'open-meteo'
+      } catch (e) {
+        errors.push('forecast1: ' + e.message)
+      }
     }
     if (!forecast) {
       try {
@@ -225,7 +252,12 @@ export default async function handler(req, res) {
     }
 
     if (!forecast) {
-      return res.status(502).json({ error: 'Weather upstream failed', errors, live: false })
+      return res.status(502).json({
+        error: 'Weather upstream failed',
+        errors,
+        live: false,
+        openweather_configured: hasOw,
+      })
     }
 
     // Parallel: live alerts + multi-model aggregate (server-side only)
@@ -302,18 +334,31 @@ export default async function handler(req, res) {
     const live_alerts = alert_bundle.alerts
     const model = riskModel
 
+    const primaryIsOw = String(source).startsWith('openweather')
+    const primaryLabel = primaryIsOw
+      ? source === 'openweather-onecall'
+        ? 'OpenWeather One Call 3.0'
+        : 'OpenWeather 2.5 (live current + 5-day)'
+      : 'Open-Meteo Forecast API'
+    const modelId = primaryIsOw
+      ? source
+      : multi_model?.primary_model_id || 'open-meteo-best_match'
+
     return res.status(200).json({
       ...forecast,
       live: true,
       _proxy: true,
       _source: source,
+      openweather_configured: hasOw,
+      openweather_meta: owMeta,
       // Explicit primary model label for honesty footers
-      model: multi_model?.primary_model_id || 'open-meteo-best_match',
+      model: modelId,
       model_meta: {
-        name: multi_model?.primary_model_id || 'best_match',
-        source: 'Open-Meteo Forecast API',
+        name: modelId,
+        source: primaryLabel,
         multi_model_mode: multi_model?.multi_model_mode || 'unknown',
         fetched_at: new Date().toISOString(),
+        openweather: primaryIsOw,
       },
       // Top-level confidence for schema consumers (same object as multi_model.confidence)
       confidence: multi_model?.confidence || null,
@@ -328,6 +373,11 @@ export default async function handler(req, res) {
         official: alert_bundle.counts.official,
         risk_signal: alert_bundle.counts.risk_signal,
         note: 'Official alerts: GDACS only when present. IMD/NDMA NOT integrated — never fabricated. Meteo/flood rows are WeatherGPT risk signals.',
+      },
+      provider_chain: {
+        primary: source,
+        openweather_configured: hasOw,
+        errors: errors.length ? errors : undefined,
       },
     })
   } catch (e) {

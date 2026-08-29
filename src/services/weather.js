@@ -511,15 +511,34 @@ function parseWeather(city, raw, liveMeta = {}) {
       honesty: alertBundle.honesty,
     },
     sources: [
-      {
-        name: liveMeta.source === 'proxy' ? 'Open-Meteo Forecast API (via proxy)' : 'Open-Meteo Forecast API',
-        role: 'Primary NWP grid forecast (temp/wind/precip/WMO codes) — not a personal station',
-        url: 'https://open-meteo.com/en/docs',
-      },
+      (() => {
+        const srcTag = String(liveMeta.source || raw._source || primaryModelId || '')
+        const isOw = /openweather/i.test(srcTag) || raw.model_meta?.openweather
+        if (isOw) {
+          return {
+            name: 'OpenWeatherMap (live)',
+            role:
+              /onecall/i.test(srcTag)
+                ? 'Primary live observations + One Call forecast — real station/model blend from OWM'
+                : 'Primary live current + 5-day/3h forecast (OW free API) — not fabricated',
+            url: 'https://openweathermap.org/api',
+          }
+        }
+        return {
+          name:
+            liveMeta.source === 'proxy' || raw._proxy
+              ? 'Open-Meteo Forecast API (via proxy)'
+              : 'Open-Meteo Forecast API',
+          role: 'Primary NWP grid forecast (temp/wind/precip/WMO codes) — not a personal station',
+          url: 'https://open-meteo.com/en/docs',
+        }
+      })(),
       {
         name: 'Model / feed',
         role: String(primaryModelId),
-        url: 'https://open-meteo.com/en/docs',
+        url: /openweather/i.test(String(primaryModelId))
+          ? 'https://openweathermap.org/api'
+          : 'https://open-meteo.com/en/docs',
       },
       ...(multiModel?.available_count >= 2
         ? [

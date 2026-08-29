@@ -31,6 +31,7 @@ import { toDisplayTemp, tempUnitLabel } from '../services/storage'
 import { CITIES, getCity } from '../data/cities'
 
 const WeatherCharacter = lazy(() => import('./WeatherCharacter'))
+const LiveWorldMap = lazy(() => import('./LiveWorldMap'))
 
 const SparkTemp = lazy(() =>
   import('./DashCharts').then((m) => ({ default: m.SparkTemp })),
@@ -167,10 +168,17 @@ function conditionTitle(c, lang) {
     .replace(/\s+/g, ' ')
     .trim()
   if (/thunder|storm|hail|तूफान|गर्ज|ओला/i.test(s)) {
-    return { primary: lang === 'hi' ? 'तूफ़ानी' : 'Stormy', secondary: s }
+    return {
+      primary: lang === 'hi' ? 'तूफ़ानी' : 'Stormy',
+      // Don't repeat the long model string under the title — keep one line
+      secondary: lang === 'hi' ? 'मॉडल संकेत · सावधानी' : 'Model signal · stay alert',
+    }
   }
   if (/rain|drizzle|बारिश|बौछ/i.test(s)) {
-    return { primary: lang === 'hi' ? 'बारिश' : 'Rainy', secondary: s }
+    return {
+      primary: lang === 'hi' ? 'बारिश' : 'Rainy',
+      secondary: lang === 'hi' ? 'गीली स्थितियाँ' : 'Wet conditions',
+    }
   }
   if (/clear|साफ|sunny/i.test(s)) {
     return {
@@ -178,9 +186,16 @@ function conditionTitle(c, lang) {
       secondary: lang === 'hi' ? 'खुला आसमान' : 'Open skies',
     }
   }
+  if (/overcast|cloud|बादल|घने/i.test(s)) {
+    return {
+      primary: s || (lang === 'hi' ? 'बादल' : 'Overcast'),
+      secondary: lang === 'hi' ? 'आकाश ढका' : 'Sky covered',
+    }
+  }
+  // Never put "Feels like" here — meta row already shows it once
   return {
     primary: s || (lang === 'hi' ? 'मौसम' : 'Weather'),
-    secondary: lang === 'hi' ? `महसूस ${c.feelsLike}°` : `Feels like ${c.feelsLike}°`,
+    secondary: null,
   }
 }
 
@@ -235,16 +250,18 @@ function HeroClouds({ mode }) {
 
 function MetricTile({ icon: Icon, label, value, unit, sub }) {
   return (
-    <div className="pg-metric">
-      <div className="pg-metric-icon">
+    <div className="pg-metric wx-metric">
+      <div className="pg-metric-icon wx-metric-icon">
         {Icon ? <Icon className="w-4 h-4" /> : null}
       </div>
-      <p className="pg-metric-label">{label}</p>
-      <p className="pg-metric-value">
-        {value}
-        {unit ? <span className="pg-metric-unit">{unit}</span> : null}
-      </p>
-      {sub ? <p className="pg-metric-sub">{sub}</p> : null}
+      <div className="wx-metric-copy">
+        <p className="pg-metric-label">{label}</p>
+        <p className="pg-metric-value">
+          {value}
+          {unit ? <span className="pg-metric-unit">{unit}</span> : null}
+        </p>
+        {sub ? <p className="pg-metric-sub">{sub}</p> : null}
+      </div>
     </div>
   )
 }
@@ -259,6 +276,69 @@ function DayRangeBar({ min, max, absMin, absMax }) {
         className="pg-day-bar-fill"
         style={{ left: `${left}%`, width: `${Math.max(8, width)}%` }}
       />
+    </div>
+  )
+}
+
+/** Compact arc gauge — CSS only, uses real numeric value (no invented scale labels beyond min/max props). */
+function ArcGauge({ value, max = 12, label, sub, tone = 'sky' }) {
+  const v = Number(value)
+  const safe = Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : 0
+  const pct = max > 0 ? safe / max : 0
+  // semicircle path length ~ 126 for r=40
+  const len = 126
+  const dash = `${(pct * len).toFixed(1)} ${len}`
+  return (
+    <div className={`wx-arc wx-arc-${tone}`} title={sub || label}>
+      <svg className="wx-arc-svg" viewBox="0 0 100 60" aria-hidden>
+        <path
+          className="wx-arc-track"
+          d="M 10 52 A 40 40 0 0 1 90 52"
+          fill="none"
+          strokeWidth="8"
+          strokeLinecap="round"
+        />
+        <path
+          className="wx-arc-value"
+          d="M 10 52 A 40 40 0 0 1 90 52"
+          fill="none"
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray={dash}
+        />
+      </svg>
+      <div className="wx-arc-readout">
+        <span className="wx-arc-num tabular-nums">{Number.isFinite(v) ? (Number.isInteger(v) ? v : v.toFixed(1)) : '—'}</span>
+        <span className="wx-arc-label">{label}</span>
+        {sub ? <span className="wx-arc-sub">{sub}</span> : null}
+      </div>
+    </div>
+  )
+}
+
+function MetricStrip({ items }) {
+  return (
+    <div className="wx-metric-strip" role="list">
+      {items.map((it) => {
+        const Icon = it.icon
+        return (
+          <div key={it.label} className="wx-metric-strip-item" role="listitem">
+            {Icon ? (
+              <span className="wx-metric-strip-ico" aria-hidden>
+                <Icon className="w-3.5 h-3.5" />
+              </span>
+            ) : null}
+            <div className="min-w-0">
+              <p className="wx-metric-strip-lbl">{it.label}</p>
+              <p className="wx-metric-strip-val tabular-nums">
+                {it.value}
+                {it.unit ? <span className="wx-metric-strip-unit">{it.unit}</span> : null}
+              </p>
+              {it.sub ? <p className="wx-metric-strip-sub">{it.sub}</p> : null}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -472,7 +552,7 @@ export default function DashboardTab({
   /* ═══════════ PREMIUM BENTO LAYOUT ═══════════ */
 
   const heroCard = (
-    <section className="pg-hero dash-hero">
+    <section className={`pg-hero dash-hero wx-env-hero sky-mode-${cloudMode}`}>
       <div className="dash-hero-bg" style={heroSkyStyle(weather)} />
       <HeroClouds mode={cloudMode} />
       {sunny && <div className="ambient-rays" aria-hidden />}
@@ -485,15 +565,16 @@ export default function DashboardTab({
         </div>
       )}
       <RainAmbient active={rainy} />
+      {cloudMode === 'night' && <div className="hero-night-stars" aria-hidden />}
 
       <div className="pg-hero-content">
-        <div className="flex items-start justify-between gap-3">
+        <div className="wx-hero-top flex items-start justify-between gap-3">
           <button
             type="button"
             onClick={onOpenCities}
-            className="text-left pressable focus-ring rounded-xl"
+            className="text-left pressable focus-ring rounded-xl wx-loc-btn"
           >
-            <p className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-white/90">
+            <p className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/95">
               <MapPin className="w-3.5 h-3.5 text-white/70" />
               <span className="truncate">
                 {city}
@@ -502,35 +583,25 @@ export default function DashboardTab({
             </p>
             <p className="text-[11px] text-white/50 mt-1 pl-5">{dateLine}</p>
           </button>
-          <DataStatusPill status={dataStatus} lang={lang} />
+          <div className="wx-live-quiet">
+            <DataStatusPill status={dataStatus} lang={lang} />
+          </div>
         </div>
 
-        {/* Samsung-style: big temp LEFT + dynamic 2D person RIGHT */}
-        <div className="pg-hero-main">
+        {/* Tight hero: temp + condition LEFT, character RIGHT — no empty void */}
+        <div className="pg-hero-main wx-hero-stage">
           <div className="pg-hero-temp-block">
-            <WeatherIcon
-              name={c.icon}
-              className="wx-hero-icon-fallback w-12 h-12 drop-shadow-lg mb-1 opacity-90"
-            />
-            <div className="flex items-start gap-0.5">
-              <span className="pg-hero-temp">{displayTemp}</span>
-              <span className="text-[20px] sm:text-[24px] font-medium text-white/50 mt-2 sm:mt-3">
-                {unit}
+            <div className="wx-temp-line">
+              <span className="pg-hero-temp type-hero-temp temp-fade" key={displayTemp}>
+                {displayTemp}
               </span>
+              <span className="wx-hero-unit">{unit}</span>
             </div>
-            <p className="text-[18px] sm:text-[20px] font-semibold text-white mt-1 leading-tight">
-              {cond.primary}
-            </p>
-            <p className="text-[12px] sm:text-[13px] text-white/55 mt-0.5 max-w-[16rem]">
-              {cond.secondary}
-            </p>
-            <div className="hero-meta-row mt-2.5">
+            <p className="wx-hero-condition">{cond.primary}</p>
+            {cond.secondary ? <p className="wx-hero-sub">{cond.secondary}</p> : null}
+            <div className="hero-meta-row">
               <span className="hero-feels tabular-nums">
-                {lang === 'hi' ? 'महसूस' : 'Feels like'}{' '}
-                <strong>{t(c.feelsLike)}°</strong>
-              </span>
-              <span className="hero-meta-sep" aria-hidden>
-                ·
+                {lang === 'hi' ? 'महसूस' : 'Feels'} <strong>{t(c.feelsLike)}°</strong>
               </span>
               <span className="hl-pill" title={lang === 'hi' ? 'उच्च' : 'High'}>
                 H {t(d0.max)}°
@@ -538,31 +609,48 @@ export default function DashboardTab({
               <span className="hl-pill" title={lang === 'hi' ? 'निम्न' : 'Low'}>
                 L {t(d0.min)}°
               </span>
-              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${riskBadge.cls}`}>
+              <span className={`wx-status-chip text-[10px] font-bold px-2.5 py-1 rounded-full ${riskBadge.cls}`}>
                 {riskBadge.label}
               </span>
             </div>
           </div>
-          <Suspense fallback={<div className="wx-character-skel" aria-hidden />}>
-            <WeatherCharacter weather={weather} lang={lang} />
-          </Suspense>
+          <div className="wx-character-slot" aria-hidden={false}>
+            <Suspense fallback={<div className="wx-character-skel" aria-hidden />}>
+              <WeatherCharacter weather={weather} lang={lang} />
+            </Suspense>
+          </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/10">
-          <div className="text-center">
-            <Wind className="w-3.5 h-3.5 mx-auto text-white/40 mb-1" />
-            <p className="text-[14px] font-semibold text-white tabular-nums">{c.wind}</p>
-            <p className="text-[10px] text-white/40">km/h</p>
+        <div className="wx-hero-rail" role="group" aria-label={lang === 'hi' ? 'मुख्य मेट्रिक्स' : 'Key metrics'}>
+          <div className="wx-hero-rail-item">
+            <Wind className="w-3.5 h-3.5 text-white/45" aria-hidden />
+            <div className="wx-hero-rail-text">
+              <span className="wx-hero-rail-val tabular-nums">{c.wind}</span>
+              <span className="wx-hero-rail-lbl">
+                km/h · {windMeta.short}
+              </span>
+            </div>
           </div>
-          <div className="text-center border-x border-white/10">
-            <Droplets className="w-3.5 h-3.5 mx-auto text-white/40 mb-1" />
-            <p className="text-[14px] font-semibold text-white tabular-nums">{c.humidity}%</p>
-            <p className="text-[10px] text-white/40">{lang === 'hi' ? 'नमी' : 'Humidity'}</p>
+          <div className="wx-hero-rail-item">
+            <Droplets className="w-3.5 h-3.5 text-white/45" aria-hidden />
+            <div className="wx-hero-rail-text">
+              <span className="wx-hero-rail-val tabular-nums">{c.humidity}%</span>
+              <span className="wx-hero-rail-lbl">{lang === 'hi' ? 'नमी' : 'Humidity'}</span>
+            </div>
           </div>
-          <div className="text-center">
-            <Eye className="w-3.5 h-3.5 mx-auto text-white/40 mb-1" />
-            <p className="text-[14px] font-semibold text-white tabular-nums">{vis}</p>
-            <p className="text-[10px] text-white/40">km</p>
+          <div className="wx-hero-rail-item">
+            <Eye className="w-3.5 h-3.5 text-white/45" aria-hidden />
+            <div className="wx-hero-rail-text">
+              <span className="wx-hero-rail-val tabular-nums">{vis}</span>
+              <span className="wx-hero-rail-lbl">{lang === 'hi' ? 'दृश्यता' : 'Visibility'} km</span>
+            </div>
+          </div>
+          <div className="wx-hero-rail-item">
+            <CloudRain className="w-3.5 h-3.5 text-white/45" aria-hidden />
+            <div className="wx-hero-rail-text">
+              <span className="wx-hero-rail-val tabular-nums">{displayPop}%</span>
+              <span className="wx-hero-rail-lbl">{lang === 'hi' ? 'बारिश' : 'Rain chance'}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -570,24 +658,24 @@ export default function DashboardTab({
   )
 
   const weekCard = (
-    <section className="pg-card">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="pg-card-title">{lang === 'hi' ? 'अगले 7 दिन' : 'Next 7 Days'}</h3>
+    <section className="wx-section wx-section-week wx-open-panel">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="wx-section-title">{lang === 'hi' ? '7 दिन' : '7-day forecast'}</h3>
         <button
           type="button"
           onClick={onOpenForecast}
-          className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 focus-ring rounded px-1"
+          className="text-[11px] font-semibold text-sky-300/90 hover:text-sky-200 focus-ring rounded px-1"
         >
           {lang === 'hi' ? 'पूरा →' : 'See all'}
         </button>
       </div>
-      <div className="space-y-1">
+      <div className="wx-day-list">
         {dayTray.map((d, i) => (
           <button
             key={d.date}
             type="button"
             onClick={() => setDayIdx(i)}
-            className={`pg-day-row focus-ring ${i === dayIdx ? 'is-active' : ''}`}
+            className={`pg-day-row wx-day-row focus-ring ${i === dayIdx ? 'is-active' : ''}`}
           >
             <span className="pg-day-name">{weekdayLabel(d, i, lang)}</span>
             <WeatherIcon name={d.icon} className="w-7 h-7 shrink-0" />
@@ -610,14 +698,14 @@ export default function DashboardTab({
   )
 
   const hourlyCard = (
-    <section className="pg-card">
+    <section className="wx-section wx-section-hourly wx-open-panel">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="pg-card-title">{lang === 'hi' ? 'घंटेवार' : 'Hourly forecast'}</h3>
+        <h3 className="wx-section-title">{lang === 'hi' ? 'घंटेवार' : '24-hour forecast'}</h3>
         <span className="text-[11px] text-white/40">
-          {lang === 'hi' ? '24 घंटे' : 'Next hours'}
+          {lang === 'hi' ? 'अगले घंटे' : 'Next hours'}
         </span>
       </div>
-      <div className="tray-scroll scroll-thin scroll-dark gap-2 pb-1">
+      <div className="tray-scroll scroll-thin scroll-dark gap-2 pb-1 wx-hour-tray">
         {hourTray.map((h, i) => {
           const active = i === hourIdx
           return (
@@ -625,16 +713,24 @@ export default function DashboardTab({
               key={h.time + i}
               type="button"
               onClick={() => setHourIdx(i)}
-              className={`pg-hour-chip focus-ring ${active ? 'is-active' : ''}`}
+              className={`pg-hour-chip wx-hour-chip focus-ring ${active ? 'is-active' : ''}`}
+              aria-pressed={active}
             >
               <span className="text-[11px] font-semibold text-white/50">
                 {shortHourLabel(h, i, lang)}
               </span>
               <WeatherIcon name={h.icon} className="w-8 h-8" />
               {h.pop >= 40 && (
-                <span className="text-[10px] font-semibold text-sky-300">{h.pop}%</span>
+                <span className="wx-hour-pop text-[10px] font-semibold text-sky-300">{h.pop}%</span>
               )}
               <span className="text-[15px] font-semibold text-white tabular-nums">{t(h.temp)}°</span>
+              {typeof h.pop === 'number' && h.pop > 0 && (
+                <span
+                  className="wx-hour-pop-bar"
+                  style={{ ['--pop']: Math.min(100, Math.max(0, h.pop)) / 100 }}
+                  aria-hidden
+                />
+              )}
             </button>
           )
         })}
@@ -672,56 +768,103 @@ export default function DashboardTab({
     </section>
   )
 
+  const uvVal = d0?.uv ?? school.uv ?? null
+  const sunrise = weather.astro?.sunrise || '—'
+  const sunset = weather.astro?.sunset || '—'
+
   const overviewCard = (
-    <section className="pg-card">
+    <section className="wx-section wx-section-metrics wx-open-panel">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="pg-card-title">{lang === 'hi' ? 'ओवरव्यू' : 'Overview'}</h3>
-        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${riskBadge.cls}`}>
+        <h3 className="wx-section-title">{lang === 'hi' ? 'स्थितियाँ' : 'Conditions'}</h3>
+        <span className={`wx-status-chip text-[10px] font-bold px-2.5 py-1 rounded-full ${riskBadge.cls}`}>
           {riskBadge.label}
         </span>
       </div>
-      <p className="text-[12px] text-white/45 mb-2">
+      <MetricStrip
+        items={[
+          {
+            icon: Droplets,
+            label: lang === 'hi' ? 'नमी' : 'Humidity',
+            value: c.humidity ?? '—',
+            unit: '%',
+          },
+          {
+            icon: Wind,
+            label: lang === 'hi' ? 'हवा' : 'Wind',
+            value: c.wind ?? '—',
+            unit: 'km/h',
+            sub: windMeta.full,
+          },
+          {
+            icon: Eye,
+            label: lang === 'hi' ? 'दृश्यता' : 'Visibility',
+            value: vis ?? '—',
+            unit: 'km',
+          },
+          {
+            icon: CloudRain,
+            label: lang === 'hi' ? 'बारिश' : 'Rain',
+            value: displayPop ?? '—',
+            unit: '%',
+          },
+          {
+            icon: Gauge,
+            label: lang === 'hi' ? 'दबाव' : 'Pressure',
+            value: c.pressure ?? '—',
+            unit: 'hPa',
+          },
+          {
+            icon: Sun,
+            label: 'UV',
+            value: uvVal ?? '—',
+          },
+        ]}
+      />
+      <div className="wx-gauge-row mt-4">
+        <ArcGauge
+          value={uvVal}
+          max={12}
+          label="UV"
+          sub={lang === 'hi' ? 'सूचकांक' : 'Index'}
+          tone="uv"
+        />
+        <div className="wx-sun-strip" aria-label={lang === 'hi' ? 'सूर्योदय सूर्यास्त' : 'Sunrise sunset'}>
+          <div className="wx-sun-item">
+            <span className="wx-sun-ico" aria-hidden>
+              <Sun className="w-4 h-4" />
+            </span>
+            <div>
+              <p className="wx-metric-strip-lbl">{lang === 'hi' ? 'सूर्योदय' : 'Sunrise'}</p>
+              <p className="wx-metric-strip-val tabular-nums">{sunrise}</p>
+            </div>
+          </div>
+          <div className="wx-sun-arc" aria-hidden />
+          <div className="wx-sun-item">
+            <span className="wx-sun-ico is-set" aria-hidden>
+              <Sun className="w-4 h-4" />
+            </span>
+            <div>
+              <p className="wx-metric-strip-lbl">{lang === 'hi' ? 'सूर्यास्त' : 'Sunset'}</p>
+              <p className="wx-metric-strip-val tabular-nums">{sunset}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p className="text-[12px] text-white/40 mt-4 mb-2">
         {lang === 'hi' ? 'तापमान ट्रेंड · अगले घंटे' : 'Temperature trend · coming hours'}
       </p>
-      <div className="h-[120px] sm:h-[140px] w-full rounded-xl overflow-hidden bg-white/[0.03] border border-white/[0.06] mb-4">
+      <div className="h-[120px] sm:h-[140px] w-full rounded-2xl overflow-hidden wx-chart-well">
         <Suspense fallback={<div className="h-full shimmer-dark rounded-xl" />}>
           <SparkTemp data={chartData.slice(0, 14)} />
         </Suspense>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <MetricTile
-          icon={Droplets}
-          label={lang === 'hi' ? 'नमी' : 'Humidity'}
-          value={`${c.humidity}`}
-          unit="%"
-        />
-        <MetricTile
-          icon={Wind}
-          label={lang === 'hi' ? 'हवा' : 'Wind'}
-          value={c.wind}
-          unit="km/h"
-          sub={windMeta.short}
-        />
-        <MetricTile
-          icon={Gauge}
-          label={lang === 'hi' ? 'दबाव' : 'Pressure'}
-          value={c.pressure}
-          unit="hPa"
-        />
-        <MetricTile
-          icon={CloudRain}
-          label={lang === 'hi' ? 'बारिश' : 'Rain chance'}
-          value={`${displayPop}`}
-          unit="%"
-        />
       </div>
     </section>
   )
 
   const citiesCard = (
-    <section className="pg-card">
+    <section className="wx-section wx-section-cities wx-open-panel">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="pg-card-title">
+        <h3 className="wx-section-title">
           {lang === 'hi' ? 'शहर' : 'Cities'}
         </h3>
         <button
@@ -762,7 +905,7 @@ export default function DashboardTab({
 
   const aqiCard =
     aqi?.aqi != null ? (
-      <section className="pg-card">
+      <section className="wx-section wx-section-aqi wx-open-panel">
         <div className="flex items-center gap-3.5">
           <div
             className="aqi-ring w-14 h-14 rounded-full p-[3px] shrink-0"
@@ -792,7 +935,11 @@ export default function DashboardTab({
     ) : null
 
   const alertCard = topAlert ? (
-    <button type="button" onClick={onOpenAlerts} className="pg-card pg-alert-card focus-ring text-left w-full">
+    <button
+      type="button"
+      onClick={onOpenAlerts}
+      className={`wx-open-panel pg-alert-card wx-risk-story focus-ring text-left w-full sev-${topAlert.severity || 'yellow'}`}
+    >
       <div className="flex items-start gap-3">
         <SeverityDot severity={topAlert.severity} className="mt-1.5 scale-125" />
         <div className="min-w-0 flex-1">
@@ -829,17 +976,17 @@ export default function DashboardTab({
       </div>
     </button>
   ) : (
-    <div className="pg-card flex items-center gap-2 text-[13px] text-white/80 py-3.5">
+    <div className="wx-section wx-section-calm flex items-center gap-2 text-[13px] text-white/70 py-3.5 px-1">
       <span className="live-dot" />
       {lang === 'hi' ? 'कोई गंभीर अलर्ट नहीं' : 'No severe alerts for this area'}
     </div>
   )
 
   const briefCard = (
-    <section className="pg-card">
+    <section className="wx-section wx-section-brief wx-open-panel">
       <div className="flex items-start sm:items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-400 to-sky-500 text-navy-950 flex items-center justify-center shadow-lg shadow-sky-400/25 shrink-0">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-400/90 to-sky-500/80 text-navy-950 flex items-center justify-center shadow-lg shadow-sky-400/20 shrink-0">
             <Sparkles className="w-4 h-4" />
           </div>
           <div className="min-w-0">
@@ -920,7 +1067,7 @@ export default function DashboardTab({
           const Icon = d.icon
           const open = whyId === d.id
           return (
-            <div key={d.id} className="pg-card !p-3.5">
+            <div key={d.id} className="wx-open-panel wx-decision-tile !p-3.5">
               <button
                 type="button"
                 onClick={() => onOpenMode?.(d.id)}
@@ -966,8 +1113,26 @@ export default function DashboardTab({
     <ModelConsensusCard lang={lang} city={weather?.city} weather={weather} />
   ) : null
 
+  const worldMapCard = !coreOnly ? (
+    <Suspense
+      fallback={
+        <section className="wx-world-map wx-open-panel" aria-hidden>
+          <div className="wx-world-head">
+            <h3 className="wx-section-title">
+              {lang === 'hi' ? 'लाइव विश्व मौसम' : 'Live world weather'}
+            </h3>
+            <p className="wx-world-sub">{lang === 'hi' ? 'मानचित्र लोड…' : 'Loading map…'}</p>
+          </div>
+          <div className="wx-world-stage" style={{ minHeight: 220 }} />
+        </section>
+      }
+    >
+      <LiveWorldMap lang={lang} city={weather?.city} weather={weather} compact={!isDesktop} />
+    </Suspense>
+  ) : null
+
   const sourcesCard = (
-    <section className="pg-card !p-0 overflow-hidden">
+    <section className="wx-open-panel !p-0 overflow-hidden">
       <button
         type="button"
         onClick={() => setSourcesOpen((v) => !v)}
@@ -999,8 +1164,8 @@ export default function DashboardTab({
   )
 
   return (
-    <div className={`relative h-full overflow-y-auto scroll-thin scroll-dark ${sky}`}>
-      <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/[0.03] via-transparent to-black/40" />
+    <div className={`relative h-full overflow-y-auto scroll-thin scroll-dark wx-dash-env ${sky}`}>
+      <div className="absolute inset-0 pointer-events-none wx-env-veil" aria-hidden />
       <div className="relative z-[2] page-pad pt-1 pb-0">
         <DataStatusBanner status={dataStatus} lang={lang} onRetry={onRefresh} />
         {coreOnly ? (
@@ -1010,64 +1175,36 @@ export default function DashboardTab({
         ) : null}
       </div>
       <div
-        className={`relative reveal-stagger page-pad pt-2 sm:pt-3 pb-8 ${
-          isDesktop ? 'pg-desk max-w-[1440px] mx-auto' : 'space-y-3 max-w-lg mx-auto'
+        className={`relative reveal-stagger page-pad pt-2 sm:pt-3 pb-8 wx-dash-flow ${
+          isDesktop ? 'pg-desk max-w-[1440px] mx-auto' : 'space-y-4 max-w-lg mx-auto'
         }`}
       >
         {isDesktop ? (
           <>
-            {/* Row 1: Hero | 7-day | Cities  (reference tablet) */}
-            <div className="pg-bento-top">
-              <div className="pg-bento-hero">{heroCard}</div>
-              <div className="pg-bento-week">{weekCard}</div>
-              <div className="pg-bento-cities">
+            {/* Immersive environment: hero spans, intel column on the side */}
+            <div className="wx-desk-top">
+              <div className="wx-desk-hero">{heroCard}</div>
+              <aside className="wx-desk-side">
+                {alertCard}
+                {weekCard}
                 {citiesCard}
-                <div className="mt-3">{alertCard}</div>
-              </div>
+              </aside>
             </div>
-            {/* Row 2: Hourly full width */}
-            <div className="pg-bento-hourly">{hourlyCard}</div>
-            {consensusCard ? <div className="pg-bento-consensus">{consensusCard}</div> : null}
-            {/* Row 3: Overview + AQI / metrics */}
-            <div className="pg-bento-mid">
+            <div className="wx-desk-hourly">{hourlyCard}</div>
+            {worldMapCard ? <div className="wx-desk-world desktop-span-2">{worldMapCard}</div> : null}
+            {consensusCard ? <div className="wx-desk-consensus">{consensusCard}</div> : null}
+            <div className="wx-desk-mid">
               <div className="min-w-0">{overviewCard}</div>
-              <div className="stack-cards min-w-0">
+              <div className="wx-desk-side-stack min-w-0">
                 {aqiCard}
-                <section className="pg-card">
-                  <h3 className="pg-card-title mb-3">{lang === 'hi' ? 'विवरण' : 'Details'}</h3>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <MetricTile
-                      icon={Sun}
-                      label="UV"
-                      value={d0?.uv ?? school.uv ?? '—'}
-                    />
-                    <MetricTile
-                      icon={Eye}
-                      label={lang === 'hi' ? 'दृश्यता' : 'Visibility'}
-                      value={vis}
-                      unit="km"
-                    />
-                    <MetricTile
-                      icon={Wind}
-                      label={lang === 'hi' ? 'दिशा' : 'Wind dir'}
-                      value={windMeta.short}
-                      sub={`${windMeta.deg}°`}
-                    />
-                    <MetricTile
-                      icon={Gauge}
-                      label={lang === 'hi' ? 'महसूस' : 'Feels'}
-                      value={t(c.feelsLike)}
-                      unit="°"
-                    />
-                  </div>
-                </section>
               </div>
             </div>
             <div className="desktop-span-2">{briefCard}</div>
             <div className="desktop-span-2">{decisionsCard}</div>
             <div className="desktop-span-2 max-w-md">{sourcesCard}</div>
             <p className="text-[10px] text-center text-white/25 pb-1">
-              WeatherGPT · {dataStatus?.code || (weather.live ? 'live' : 'cached')} · {dataStatus?.stale ? 'stale ok' : 'fresh'}
+              WeatherGPT · {dataStatus?.code || (weather.live ? 'live' : 'cached')} ·{' '}
+              {dataStatus?.stale ? 'stale ok' : 'fresh'}
             </p>
           </>
         ) : (
@@ -1077,6 +1214,7 @@ export default function DashboardTab({
             {alertCard}
             {hourlyCard}
             {weekCard}
+            {worldMapCard}
             {overviewCard}
             {aqiCard}
             {consensusCard}

@@ -112,12 +112,12 @@ export default function ModelConsensusCard({ lang, city, weather, compact = fals
 
   return (
     <section
-      className="pg-card model-consensus-card"
+      className="pg-card model-consensus-card wx-section wx-section-consensus"
       aria-label={lang === 'hi' ? 'मॉडल सहमति' : 'Model consensus'}
     >
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
-          <h3 className="pg-card-title flex items-center gap-2">
+          <h3 className="pg-card-title wx-section-title flex items-center gap-2">
             <Layers className="w-3.5 h-3.5 text-sky-300 opacity-90" aria-hidden />
             {lang === 'hi' ? 'मॉडल सहमति' : 'Model consensus'}
           </h3>
@@ -160,12 +160,24 @@ export default function ModelConsensusCard({ lang, city, weather, compact = fals
             m.next24h?.temp_mean ??
             m.next24h?.tempMean ??
             null
+          const pop =
+            m.today?.pop ??
+            m.today?.precipitation_probability_max ??
+            m.next24h?.pop ??
+            m.next24h?.precipitation_probability ??
+            m.current?.precipitation_probability ??
+            null
           return (
             <div key={m.id} className="model-chip" title={m.label || m.id}>
               <span className="model-chip-name">{label}</span>
               <span className="model-chip-temp tabular-nums">
                 {temp != null ? `${Math.round(temp)}°` : '—'}
               </span>
+              {pop != null && Number.isFinite(Number(pop)) ? (
+                <span className="model-chip-pop tabular-nums text-sky-300/90">
+                  {Math.round(Number(pop))}%
+                </span>
+              ) : null}
             </div>
           )
         })}

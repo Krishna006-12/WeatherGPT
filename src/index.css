@@ -3328,3 +3328,2057 @@ a.focus-ring:focus-visible,
   }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   VISUAL-ONLY: Premium weather environment (not card grid)
+   Reuses existing data/components — CSS + class hooks only
+   ═══════════════════════════════════════════════════════════ */
+
+.wx-dash-env {
+  --wx-section-gap: 1.05rem;
+  --wx-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.wx-env-veil {
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -5%, rgba(140, 190, 255, 0.08), transparent 55%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, transparent 28%, rgba(0, 0, 0, 0.42) 100%);
+}
+
+.wx-dash-flow.pg-desk {
+  gap: 1.15rem !important;
+}
+
+/* Sidebar — lighter, supporting chrome */
+@media (min-width: 1024px) {
+  .app-sidebar {
+    width: 72px !important;
+    background: rgba(14, 22, 36, 0.42) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    box-shadow:
+      0 12px 36px rgba(0, 0, 0, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+    backdrop-filter: blur(20px) saturate(1.05) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.05) !important;
+  }
+  .app-sidebar button {
+    transition: background 0.22s var(--wx-ease), color 0.22s ease, transform 0.22s var(--wx-ease) !important;
+  }
+  .app-main-col {
+    background: rgba(12, 20, 34, 0.28) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28) !important;
+  }
+  .desktop-only-chrome {
+    background: transparent !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    backdrop-filter: blur(12px) !important;
+  }
+}
+
+/* Sections over heavy glass cards */
+.wx-section.pg-card,
+.pg-card.wx-section {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgba(12, 24, 44, 0.28) 50%,
+    rgba(8, 16, 30, 0.18) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 10px 28px rgba(0, 0, 0, 0.16) !important;
+  backdrop-filter: blur(14px) saturate(1.08) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.08) !important;
+  border-radius: 20px !important;
+  padding: 1.05rem 1.15rem !important;
+}
+
+.wx-section.pg-card:hover,
+.pg-card.wx-section:hover {
+  border-color: rgba(255, 255, 255, 0.11) !important;
+  transform: none !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 14px 32px rgba(0, 0, 0, 0.2) !important;
+}
+
+.wx-section-title.pg-card-title {
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: rgba(255, 255, 255, 0.48) !important;
+}
+
+.wx-section-calm {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Immersive hero environment */
+.wx-env-hero.dash-hero,
+.wx-env-hero.pg-hero {
+  border-radius: 28px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 28px 64px rgba(0, 0, 0, 0.38) !important;
+  min-height: 380px !important;
+}
+
+.wx-env-hero .pg-hero-content {
+  min-height: 380px !important;
+  padding: 1.35rem 1.4rem 1.2rem !important;
+  gap: 0.35rem;
+}
+
+.wx-env-hero .pg-hero-temp,
+.wx-env-hero .type-hero-temp {
+  font-size: clamp(76px, 11vw, 118px) !important;
+  font-weight: 620 !important;
+  letter-spacing: -0.05em !important;
+  line-height: 0.88 !important;
+  text-shadow:
+    0 2px 16px rgba(0, 0, 0, 0.35),
+    0 18px 48px rgba(0, 0, 0, 0.4) !important;
+}
+
+.wx-hero-condition {
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.3);
+}
+
+.wx-hero-stage.pg-hero-main {
+  min-height: 220px !important;
+  gap: 0.5rem !important;
+  padding-top: 0.5rem !important;
+}
+
+.wx-character-slot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.35));
+}
+
+.wx-character-slot::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  width: 72%;
+  height: 28%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.35), transparent 70%);
+  filter: blur(8px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.wx-character-slot .wx-character {
+  position: relative;
+  z-index: 1;
+}
+
+.wx-live-quiet {
+  opacity: 0.72;
+  transform: scale(0.96);
+  transform-origin: top right;
+}
+
+.wx-live-quiet:hover {
+  opacity: 1;
+}
+
+/* Hero metric rail — not three mini cards */
+.wx-hero-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.wx-hero-rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.15rem 0.35rem;
+  position: relative;
+}
+
+.wx-hero-rail-item + .wx-hero-rail-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12%;
+  bottom: 12%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.wx-hero-rail-val {
+  font-size: 15px;
+  font-weight: 650;
+  color: #fff;
+  line-height: 1.1;
+}
+
+.wx-hero-rail-lbl {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.42);
+  letter-spacing: 0.02em;
+}
+
+/* Night stars — CSS only, few nodes */
+.hero-night-stars {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 28% 32%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 62% 14%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1px 1px at 78% 28%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 88% 48%, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(1px 1px at 42% 22%, rgba(200, 220, 255, 0.7), transparent);
+  opacity: 0.7;
+  animation: wx-stars-twinkle 6s ease-in-out infinite alternate;
+}
+
+@keyframes wx-stars-twinkle {
+  from { opacity: 0.45; }
+  to { opacity: 0.85; }
+}
+
+/* Metrics as compact groups */
+.wx-metric.pg-metric {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.7rem 0.65rem !important;
+  border-radius: 14px !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: none !important;
+}
+
+.wx-metric-icon {
+  margin-bottom: 0 !important;
+  margin-top: 0.15rem;
+  opacity: 0.9;
+}
+
+.wx-metric-copy {
+  min-width: 0;
+}
+
+.wx-metric-grid {
+  gap: 0.65rem !important;
+}
+
+/* Hourly chips — alive selection */
+.wx-hour-chip.pg-hour-chip {
+  position: relative;
+  overflow: hidden;
+  min-width: 72px;
+  padding: 0.8rem 0.55rem 0.95rem !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  transition:
+    transform 0.28s var(--wx-ease),
+    background 0.28s ease,
+    border-color 0.28s ease,
+    box-shadow 0.28s ease !important;
+}
+
+.wx-hour-chip.pg-hour-chip:hover {
+  transform: translateY(-2px) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+.wx-hour-chip.pg-hour-chip.is-active {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(94, 176, 255, 0.22) 100%
+  ) !important;
+  border-color: rgba(142, 200, 255, 0.42) !important;
+  box-shadow:
+    0 10px 28px rgba(40, 120, 220, 0.22),
+    0 0 0 1px rgba(142, 200, 255, 0.15) inset !important;
+  transform: translateY(-3px) scale(1.02) !important;
+}
+
+.wx-hour-pop-bar {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 6px;
+  height: 3px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.wx-hour-pop-bar::after {
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--pop, 0) * 100%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, #5eb0ff, #8ec8ff);
+}
+
+/* 7-day — cleaner scan rows */
+.wx-section-week .pg-day-row {
+  padding: 0.65rem 0.35rem !important;
+  border-radius: 12px !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  background: transparent !important;
+}
+
+.wx-section-week .pg-day-row:last-child {
+  border-bottom: none !important;
+}
+
+.wx-section-week .pg-day-row:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.wx-section-week .pg-day-row.is-active {
+  background: rgba(94, 176, 255, 0.08) !important;
+  box-shadow: inset 3px 0 0 rgba(94, 176, 255, 0.65);
+}
+
+.wx-section-week .pg-day-bar-track {
+  height: 5px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.wx-section-week .pg-day-bar-fill {
+  background: linear-gradient(90deg, #4da3e6, #7ec8ff 40%, #ffe566) !important;
+}
+
+/* Risk story — severity-connected, not generic card */
+.wx-risk-story.pg-alert-card {
+  border-left-width: 3px !important;
+  border-left-style: solid !important;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 159, 10, 0.1) 0%,
+    rgba(12, 24, 44, 0.35) 42%,
+    rgba(8, 16, 30, 0.2) 100%
+  ) !important;
+}
+
+.wx-risk-story.sev-red {
+  border-left-color: #ff453a !important;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 69, 58, 0.14) 0%,
+    rgba(12, 24, 44, 0.35) 45%,
+    transparent 100%
+  ) !important;
+}
+
+.wx-risk-story.sev-amber {
+  border-left-color: #ff9f0a !important;
+}
+
+.wx-risk-story.sev-yellow {
+  border-left-color: #ffd60a !important;
+}
+
+.wx-risk-story:hover {
+  transform: translateY(-1px);
+}
+
+.wx-status-chip {
+  letter-spacing: 0.04em;
+}
+
+/* Decision tiles — quieter */
+.wx-decision-tile.pg-card {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  box-shadow: none !important;
+}
+
+.wx-decision-tile.pg-card:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(142, 200, 255, 0.22) !important;
+}
+
+.wx-chart-well {
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  background: rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Model consensus strip polish */
+.model-consensus-card.pg-card,
+.pg-card.model-consensus-card {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow: none !important;
+}
+
+.model-consensus-card .model-chip {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s var(--wx-ease);
+}
+
+.model-consensus-card .model-chip:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  transform: translateY(-1px);
+}
+
+/* Brief story columns */
+.wx-section-brief {
+  background: linear-gradient(
+    165deg,
+    rgba(94, 176, 255, 0.08) 0%,
+    rgba(12, 24, 44, 0.3) 40%,
+    rgba(8, 16, 30, 0.2) 100%
+  ) !important;
+}
+
+/* Desktop bento breathing room */
+@media (min-width: 1024px) {
+  .pg-bento-top {
+    gap: 1.1rem !important;
+  }
+  .pg-bento-mid {
+    gap: 1.1rem !important;
+  }
+  .wx-env-hero.dash-hero {
+    min-height: 420px !important;
+  }
+  .wx-env-hero .pg-hero-content {
+    min-height: 420px !important;
+  }
+  .wx-hero-stage.pg-hero-main {
+    min-height: 250px !important;
+  }
+}
+
+/* Mobile hierarchy spacing */
+@media (max-width: 1023px) {
+  .wx-dash-flow {
+    gap: 0.95rem;
+  }
+  .wx-env-hero.dash-hero,
+  .wx-env-hero.pg-hero {
+    min-height: 340px !important;
+    border-radius: 24px !important;
+  }
+  .wx-env-hero .pg-hero-content {
+    min-height: 340px !important;
+    padding: 1.1rem 1.05rem 1rem !important;
+  }
+  .wx-env-hero .pg-hero-temp {
+    font-size: clamp(68px, 18vw, 92px) !important;
+  }
+  .wx-section.pg-card {
+    padding: 0.95rem 1rem !important;
+    border-radius: 18px !important;
+  }
+  .wx-hour-chip.pg-hour-chip {
+    min-width: 64px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .hero-night-stars {
+    animation: none !important;
+    opacity: 0.65;
+  }
+  .wx-hour-chip.pg-hour-chip:hover,
+  .wx-hour-chip.pg-hour-chip.is-active,
+  .wx-risk-story:hover,
+  .model-consensus-card .model-chip:hover {
+    transform: none !important;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   VISUAL v2 — environment layout (hero-led, open panels)
+   ═══════════════════════════════════════════════════════════ */
+
+.wx-open-panel {
+  position: relative;
+  padding: 1.05rem 1.15rem;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+  color: #fff;
+  backdrop-filter: blur(10px) saturate(1.05);
+  -webkit-backdrop-filter: blur(10px) saturate(1.05);
+  transition: border-color 0.25s ease, background 0.25s ease;
+}
+
+.wx-open-panel:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+/* Override older pg-card weight when both classes present */
+.wx-section.wx-open-panel,
+.wx-open-panel.wx-section {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(10px) saturate(1.05) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(1.05) !important;
+}
+
+.wx-section-title {
+  margin: 0;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+
+/* Desktop environment grid */
+.wx-desk-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.78fr);
+  gap: 1.15rem;
+  align-items: stretch;
+  width: 100%;
+}
+
+.wx-desk-hero {
+  min-width: 0;
+  min-height: 100%;
+}
+
+.wx-desk-side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.wx-desk-hourly,
+.wx-desk-consensus {
+  width: 100%;
+  min-width: 0;
+}
+
+.wx-desk-mid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.7fr);
+  gap: 1.15rem;
+  align-items: start;
+  width: 100%;
+}
+
+.wx-desk-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+@media (max-width: 1180px) {
+  .wx-desk-top {
+    grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.85fr);
+  }
+}
+
+@media (max-width: 1023px) {
+  .wx-desk-top,
+  .wx-desk-mid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.95rem;
+  }
+}
+
+/* Hero dominates more of the shell */
+.wx-env-hero.dash-hero,
+.wx-env-hero.pg-hero {
+  min-height: 440px !important;
+  border-radius: 30px !important;
+  border: 1px solid rgba(255, 255, 255, 0.11) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 32px 72px rgba(0, 0, 0, 0.42) !important;
+}
+
+.wx-env-hero .pg-hero-content {
+  min-height: 440px !important;
+  padding: 1.5rem 1.55rem 1.25rem !important;
+}
+
+.wx-env-hero .pg-hero-temp,
+.wx-env-hero .type-hero-temp {
+  font-size: clamp(88px, 12vw, 132px) !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.055em !important;
+}
+
+.wx-hero-condition {
+  font-size: clamp(1.15rem, 2vw, 1.45rem) !important;
+  font-weight: 600 !important;
+  color: rgba(255, 255, 255, 0.96) !important;
+}
+
+.wx-hero-sub {
+  color: rgba(255, 255, 255, 0.52) !important;
+  font-weight: 500;
+}
+
+.wx-hero-stage.pg-hero-main {
+  min-height: 260px !important;
+  margin-top: 0.35rem;
+}
+
+.wx-character-slot {
+  transform: translateY(4px);
+}
+
+.wx-character-slot .wx-character {
+  filter: drop-shadow(0 22px 36px rgba(0, 0, 0, 0.4));
+}
+
+/* Metric strip — premium rows, not card tiles */
+.wx-metric-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.wx-metric-strip-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.85rem 0.9rem;
+  position: relative;
+  min-width: 0;
+}
+
+.wx-metric-strip-item + .wx-metric-strip-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.wx-metric-strip-ico {
+  display: inline-flex;
+  color: rgba(142, 200, 255, 0.85);
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.wx-metric-strip-lbl {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.wx-metric-strip-val {
+  margin: 0.15rem 0 0;
+  font-size: 1.2rem;
+  font-weight: 650;
+  color: #fff;
+  line-height: 1.15;
+}
+
+.wx-metric-strip-unit {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: 0.2rem;
+}
+
+.wx-metric-strip-sub {
+  margin: 0.15rem 0 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 720px) {
+  .wx-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* UV arc + sun strip */
+.wx-gauge-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.42fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+}
+
+.wx-arc {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 110px;
+}
+
+.wx-arc-svg {
+  width: 100%;
+  max-width: 160px;
+  height: auto;
+  overflow: visible;
+}
+
+.wx-arc-track {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+
+.wx-arc-value {
+  stroke: #5eb0ff;
+  transition: stroke-dasharray 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.wx-arc-uv .wx-arc-value {
+  stroke: url(#none);
+  stroke: #ffd60a;
+}
+
+.wx-arc-readout {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+}
+
+.wx-arc-num {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+.wx-arc-label {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.wx-arc-sub {
+  display: block;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.wx-sun-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  min-height: 88px;
+}
+
+.wx-sun-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.wx-sun-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 214, 10, 0.15);
+  color: #ffe566;
+  flex-shrink: 0;
+}
+
+.wx-sun-ico.is-set {
+  background: rgba(255, 159, 10, 0.14);
+  color: #ffb340;
+}
+
+.wx-sun-arc {
+  flex: 1;
+  height: 2px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #ffe566, rgba(255, 255, 255, 0.12) 50%, #ff9f0a);
+  opacity: 0.85;
+  position: relative;
+  min-width: 40px;
+}
+
+.wx-sun-arc::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 12px rgba(255, 220, 120, 0.65);
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 640px) {
+  .wx-gauge-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Day list — open, scannable */
+.wx-day-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.wx-day-list .wx-day-row.pg-day-row {
+  border-radius: 0 !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  padding: 0.7rem 0.25rem !important;
+  background: transparent !important;
+}
+
+.wx-day-list .wx-day-row.pg-day-row:last-child {
+  border-bottom: none !important;
+}
+
+.wx-day-list .wx-day-row.pg-day-row.is-active {
+  background: rgba(94, 176, 255, 0.07) !important;
+  box-shadow: inset 3px 0 0 #5eb0ff;
+}
+
+.wx-day-list .wx-day-row.pg-day-row:hover {
+  background: rgba(255, 255, 255, 0.035) !important;
+}
+
+/* Chart well quieter */
+.wx-chart-well {
+  background: rgba(0, 0, 0, 0.16) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 18px !important;
+}
+
+/* Risk story spacing in side column */
+.wx-desk-side .wx-risk-story {
+  padding: 0.95rem 1rem;
+}
+
+.wx-desk-side .wx-section-calm {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+}
+
+/* Hourly open panel */
+.wx-section-hourly.wx-open-panel {
+  padding-bottom: 1.15rem;
+}
+
+.wx-hour-tray {
+  padding-bottom: 0.35rem;
+}
+
+/* Model consensus chip POP */
+.model-chip-pop {
+  font-size: 11px;
+  font-weight: 650;
+  opacity: 0.9;
+}
+
+/* Decisions section header breathing */
+.wx-dash-flow > section > p.text-\[11px\] {
+  letter-spacing: 0.12em;
+}
+
+/* Sidebar even lighter on desktop */
+@media (min-width: 1024px) {
+  .app-sidebar {
+    background: rgba(10, 16, 28, 0.35) !important;
+    border-color: rgba(255, 255, 255, 0.05) !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18) !important;
+  }
+  .app-main-col {
+    background: rgba(8, 14, 26, 0.22) !important;
+    border-color: rgba(255, 255, 255, 0.05) !important;
+  }
+  .wx-env-hero.dash-hero {
+    min-height: 460px !important;
+  }
+  .wx-env-hero .pg-hero-content {
+    min-height: 460px !important;
+  }
+  .wx-dash-flow.pg-desk {
+    gap: 1.25rem !important;
+  }
+}
+
+/* Mobile: hero still first, open panels */
+@media (max-width: 1023px) {
+  .wx-env-hero.dash-hero,
+  .wx-env-hero.pg-hero {
+    min-height: 360px !important;
+    border-radius: 26px !important;
+  }
+  .wx-env-hero .pg-hero-content {
+    min-height: 360px !important;
+    padding: 1.15rem 1.05rem 1rem !important;
+  }
+  .wx-env-hero .pg-hero-temp {
+    font-size: clamp(72px, 20vw, 100px) !important;
+  }
+  .wx-open-panel {
+    padding: 0.95rem 1rem;
+    border-radius: 18px;
+  }
+  .wx-metric-strip-val {
+    font-size: 1.05rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-arc-value {
+    transition: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VISUAL v3 — (patched) never collapse hero with min-height:0
+   ═══════════════════════════════════════════════════════════ */
+
+/* Hero: compact but ALWAYS tall enough for temp + mascot */
+.wx-env-hero.dash-hero,
+.wx-env-hero.pg-hero {
+  min-height: 320px !important;
+  height: auto;
+  border-radius: 24px !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 18px 40px rgba(0, 0, 0, 0.32) !important;
+}
+
+.wx-env-hero .pg-hero-content {
+  min-height: 300px !important;
+  height: auto;
+  padding: 1.1rem 1.2rem 0.95rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.35rem !important;
+  justify-content: flex-start !important;
+}
+
+.wx-hero-top {
+  flex-shrink: 0;
+}
+
+/* Temp + person share one tight band — keep stage tall enough */
+.wx-hero-stage.pg-hero-main {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 42%) !important;
+  align-items: end !important;
+  justify-content: stretch !important;
+  gap: 0.25rem 0.75rem !important;
+  flex: 1 1 auto !important;
+  min-height: 180px !important;
+  max-height: none !important;
+  padding: 0.15rem 0 0.25rem !important;
+  margin: 0 !important;
+}
+
+.pg-hero-temp-block {
+  justify-content: flex-end !important;
+  padding: 0 !important;
+  gap: 0.15rem;
+}
+
+.wx-temp-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.15rem;
+  line-height: 0.9;
+}
+
+.wx-env-hero .pg-hero-temp,
+.wx-env-hero .type-hero-temp {
+  font-size: clamp(64px, 7.5vw, 96px) !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.05em !important;
+  line-height: 0.88 !important;
+  text-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.35),
+    0 12px 28px rgba(0, 0, 0, 0.3) !important;
+}
+
+.wx-hero-unit {
+  font-size: clamp(16px, 1.8vw, 22px) !important;
+  font-weight: 550 !important;
+  color: rgba(255, 255, 255, 0.48) !important;
+  margin-top: 0.55rem !important;
+  letter-spacing: -0.02em;
+}
+
+.wx-hero-condition {
+  margin: 0.2rem 0 0 !important;
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem) !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  color: rgba(255, 255, 255, 0.95) !important;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25);
+}
+
+.wx-hero-sub {
+  margin: 0.15rem 0 0 !important;
+  font-size: 12px !important;
+  color: rgba(255, 255, 255, 0.48) !important;
+  max-width: 16rem;
+  line-height: 1.35;
+}
+
+.hero-meta-row {
+  margin-top: 0.55rem !important;
+  gap: 0.35rem 0.45rem !important;
+}
+
+.hero-feels {
+  font-size: 12px !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem;
+}
+
+.hero-feels strong {
+  color: #fff !important;
+}
+
+.hl-pill {
+  padding: 0.22rem 0.55rem !important;
+  font-size: 11px !important;
+}
+
+/* Character sits in scene — larger, grounded, less “sticker” */
+.wx-character-slot {
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  align-self: end !important;
+  height: 100%;
+  min-height: 160px;
+  max-height: 240px;
+  transform: none !important;
+  position: relative;
+  padding-bottom: 0.15rem;
+}
+
+.wx-character-slot::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  width: 78%;
+  height: 22%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.45), transparent 72%);
+  filter: blur(10px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.wx-character-slot .wx-character,
+.wx-character-slot .wx-character.wx-cat {
+  width: min(100%, 200px) !important;
+  max-width: 210px !important;
+  min-width: 110px !important;
+  margin: 0 !important;
+  align-self: flex-end !important;
+  filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.38)) !important;
+  z-index: 1;
+}
+
+.wx-character-slot .wx-character-tip {
+  margin-top: 2px !important;
+  font-size: 10.5px !important;
+  padding: 3px 10px !important;
+  background: rgba(8, 16, 32, 0.55) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* 4-metric hero rail — denser, labeled */
+.wx-hero-rail {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 0 !important;
+  margin-top: 0.35rem !important;
+  padding-top: 0.7rem !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  flex-shrink: 0;
+}
+
+.wx-hero-rail-item {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.4rem !important;
+  padding: 0.15rem 0.35rem !important;
+}
+
+.wx-hero-rail-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.wx-hero-rail-val {
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  color: #fff !important;
+}
+
+.wx-hero-rail-lbl {
+  font-size: 9.5px !important;
+  font-weight: 500 !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 5.5rem;
+}
+
+.wx-hero-rail-item + .wx-hero-rail-item::before {
+  top: 15% !important;
+  bottom: 15% !important;
+  background: rgba(255, 255, 255, 0.09) !important;
+}
+
+/* Live pill — smaller, corner */
+.wx-live-quiet {
+  opacity: 0.65 !important;
+  transform: scale(0.9) !important;
+  transform-origin: top right !important;
+}
+
+/* Desk: hero + side balanced, not oversized empty hero */
+.wx-desk-top {
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.9fr) !important;
+  gap: 0.95rem !important;
+  align-items: stretch !important;
+}
+
+.wx-desk-hero {
+  display: flex;
+  flex-direction: column;
+}
+
+.wx-desk-hero .wx-env-hero {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.wx-desk-side {
+  gap: 0.75rem !important;
+}
+
+.wx-desk-side .wx-open-panel,
+.wx-desk-side .wx-risk-story {
+  padding: 0.85rem 0.95rem !important;
+}
+
+.wx-desk-side .wx-section-week {
+  flex: 1 1 auto;
+}
+
+.wx-day-list .wx-day-row.pg-day-row {
+  padding: 0.55rem 0.2rem !important;
+}
+
+/* Soften risk card so it doesn’t scream vs hero */
+.wx-risk-story {
+  border-radius: 18px !important;
+}
+
+.wx-risk-story .text-\[14px\] {
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+}
+
+/* Open panels slightly tighter */
+.wx-open-panel {
+  border-radius: 18px !important;
+  padding: 0.9rem 1rem !important;
+}
+
+@media (min-width: 1024px) {
+  .wx-env-hero.dash-hero,
+  .wx-env-hero.pg-hero {
+    min-height: 340px !important;
+  }
+  .wx-env-hero .pg-hero-content {
+    min-height: 320px !important;
+  }
+  .wx-character-slot .wx-character.wx-person,
+  .wx-character-slot .wx-character.wx-cat {
+    width: min(100%, 220px) !important;
+    max-width: 230px !important;
+  }
+  .wx-hero-stage.pg-hero-main {
+    grid-template-columns: minmax(0, 1fr) minmax(140px, 40%) !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .wx-hero-stage.pg-hero-main {
+    grid-template-columns: minmax(0, 1.1fr) minmax(100px, 38%) !important;
+    min-height: 150px !important;
+  }
+  .wx-env-hero .pg-hero-temp {
+    font-size: clamp(56px, 16vw, 80px) !important;
+  }
+  .wx-hero-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .wx-hero-rail-item:nth-child(3)::before,
+  .wx-hero-rail-item:nth-child(1)::before {
+    /* keep dividers simple on 2x2 */
+  }
+  .wx-character-slot {
+    min-height: 150px !important;
+    max-height: 200px;
+  }
+  .wx-character-slot .wx-character.wx-person,
+  .wx-character-slot .wx-character.wx-cat {
+    width: min(100%, 150px) !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .wx-hero-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .wx-hero-rail-lbl {
+    max-width: 4.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-live-quiet {
+    transform: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VISUAL v4 — restore hero temp + Samsung person + world map
+   ═══════════════════════════════════════════════════════════ */
+
+/* CRITICAL: never collapse hero content (min-height:0 was wiping temp/mascot) */
+.wx-env-hero.dash-hero,
+.wx-env-hero.pg-hero,
+.dash-hero.pg-hero {
+  min-height: 320px !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border-radius: 24px !important;
+}
+
+.wx-env-hero .pg-hero-content,
+.pg-hero-content {
+  position: relative !important;
+  z-index: 5 !important;
+  min-height: 300px !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 0.5rem !important;
+  padding: 1.15rem 1.25rem 1rem !important;
+  flex: 1 1 auto !important;
+}
+
+.wx-hero-stage.pg-hero-main,
+.pg-hero-main {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.15fr) minmax(130px, 0.9fr) !important;
+  align-items: end !important;
+  gap: 0.5rem 0.75rem !important;
+  flex: 1 1 auto !important;
+  min-height: 180px !important;
+  max-height: none !important;
+  padding: 0.35rem 0 !important;
+  position: relative !important;
+  z-index: 5 !important;
+}
+
+.pg-hero-temp-block {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: flex-end !important;
+  min-width: 0 !important;
+  z-index: 6 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.wx-temp-line {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 0.2rem !important;
+}
+
+.wx-env-hero .pg-hero-temp,
+.pg-hero-temp,
+.type-hero-temp {
+  display: inline-block !important;
+  font-size: clamp(72px, 9vw, 108px) !important;
+  font-weight: 650 !important;
+  line-height: 0.88 !important;
+  letter-spacing: -0.05em !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  text-shadow: 0 8px 28px rgba(0, 0, 0, 0.4) !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.wx-hero-unit {
+  display: inline-block !important;
+  font-size: 22px !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+  margin-top: 0.65rem !important;
+  font-weight: 550 !important;
+}
+
+.wx-hero-condition {
+  display: block !important;
+  margin-top: 0.35rem !important;
+  font-size: clamp(1.15rem, 2vw, 1.4rem) !important;
+  font-weight: 600 !important;
+  color: #fff !important;
+  opacity: 1 !important;
+}
+
+.wx-hero-sub {
+  display: block !important;
+  margin-top: 0.2rem !important;
+  font-size: 12.5px !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.hero-meta-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.4rem !important;
+  margin-top: 0.65rem !important;
+  opacity: 1 !important;
+}
+
+/* Samsung person mascot slot */
+.wx-character-slot {
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  min-height: 200px !important;
+  max-height: 280px !important;
+  height: 100% !important;
+  position: relative !important;
+  z-index: 6 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.wx-character-slot::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  width: 70%;
+  height: 18%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.4), transparent 70%);
+  filter: blur(8px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.wx-character.wx-person {
+  width: min(100%, 220px) !important;
+  max-width: 240px !important;
+  min-width: 120px !important;
+  filter: drop-shadow(0 16px 28px rgba(0, 0, 0, 0.4)) !important;
+  z-index: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  position: relative !important;
+  right: auto !important;
+  bottom: auto !important;
+  animation: wx-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.wx-character.wx-person .wx-character-stage {
+  width: 100%;
+  aspect-ratio: 200 / 260;
+  position: relative;
+  line-height: 0;
+}
+
+.wx-character.wx-person .wx-character-tip {
+  margin-top: 4px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(8, 18, 36, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+  max-width: 100%;
+}
+
+/* Hero rail always visible */
+.wx-hero-rail {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  margin-top: 0.5rem !important;
+  padding-top: 0.75rem !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+  flex-shrink: 0 !important;
+  opacity: 1 !important;
+  z-index: 5 !important;
+  position: relative !important;
+}
+
+/* Desk layout balance */
+.wx-desk-top {
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.85fr) !important;
+  gap: 1rem !important;
+  align-items: stretch !important;
+}
+
+.wx-desk-hero {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 340px !important;
+}
+
+.wx-desk-hero .wx-env-hero {
+  flex: 1 1 auto !important;
+  min-height: 340px !important;
+}
+
+/* ── Live world map ── */
+.wx-world-map {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.95rem 1rem 0.85rem !important;
+}
+
+.wx-world-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+}
+
+.wx-world-sub {
+  margin: 0.25rem 0 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.42);
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-world-layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.wx-world-layer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.wx-world-layer.is-on {
+  background: rgba(94, 176, 255, 0.18);
+  border-color: rgba(142, 200, 255, 0.4);
+  color: #fff;
+}
+
+.wx-world-stage {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0a1220;
+  height: min(42vh, 380px);
+  min-height: 240px;
+}
+
+.wx-world-stage.is-compact {
+  height: min(32vh, 280px);
+  min-height: 200px;
+}
+
+.wx-world-leaflet {
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.wx-world-leaflet .leaflet-control-attribution {
+  background: rgba(8, 14, 28, 0.75) !important;
+  color: rgba(255, 255, 255, 0.45) !important;
+  font-size: 9px !important;
+  max-width: 70%;
+}
+
+.wx-world-leaflet .leaflet-control-attribution a {
+  color: rgba(142, 200, 255, 0.8) !important;
+}
+
+.wx-world-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  border-radius: 999px;
+  background: rgba(8, 16, 32, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.wx-world-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 36px;
+  height: 34px;
+  padding: 0 0.65rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  transition: background 0.2s ease;
+}
+
+.wx-world-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.wx-world-play.is-on {
+  background: rgba(94, 176, 255, 0.28);
+  border-color: rgba(142, 200, 255, 0.35);
+}
+
+.wx-world-foot {
+  margin: 0;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1.4;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1023px) {
+  .wx-env-hero.dash-hero,
+  .wx-env-hero.pg-hero {
+    min-height: 300px !important;
+  }
+  .wx-env-hero .pg-hero-content {
+    min-height: 280px !important;
+    padding: 1rem !important;
+  }
+  .wx-hero-stage.pg-hero-main {
+    min-height: 160px !important;
+    grid-template-columns: minmax(0, 1.1fr) minmax(110px, 0.85fr) !important;
+  }
+  .wx-env-hero .pg-hero-temp {
+    font-size: clamp(64px, 18vw, 88px) !important;
+  }
+  .wx-character.wx-person {
+    width: min(100%, 160px) !important;
+  }
+  .wx-character-slot {
+    min-height: 160px !important;
+  }
+  .wx-hero-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .wx-world-stage {
+    height: min(48vh, 320px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-character.wx-person {
+    animation: none !important;
+  }
+}
+
+/* VISUAL v4.1 — desk world map span + leaflet defaults */
+.wx-desk-world {
+  width: 100%;
+  grid-column: 1 / -1;
+}
+.wx-dash-flow.pg-desk .wx-desk-world {
+  margin-top: 0.25rem;
+}
+.leaflet-container {
+  background: #0a1220;
+  font: inherit;
+}
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom {
+  z-index: auto;
+}
+.wx-world-leaflet .leaflet-pane {
+  z-index: 200;
+}
+.wx-world-leaflet .leaflet-map-pane {
+  z-index: 1;
+}
+.wx-world-leaflet .leaflet-tile-pane {
+  z-index: 2;
+}
+.wx-world-leaflet .leaflet-overlay-pane {
+  z-index: 4;
+}
+.wx-world-leaflet .leaflet-marker-pane {
+  z-index: 6;
+}
+.wx-world-leaflet .leaflet-tooltip-pane {
+  z-index: 7;
+}
+.wx-world-leaflet .leaflet-control {
+  z-index: 800 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VISUAL v5 — hard UI lock (last cascade wins)
+   Hero temp + Samsung person always visible · map · panels
+   ═══════════════════════════════════════════════════════════ */
+
+.wx-env-hero.dash-hero,
+.wx-env-hero.pg-hero,
+.dash-hero.pg-hero {
+  min-height: 340px !important;
+  height: auto !important;
+  max-height: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  position: relative !important;
+  isolation: isolate;
+}
+
+.wx-env-hero .pg-hero-content,
+.pg-hero-content {
+  position: relative !important;
+  z-index: 6 !important;
+  min-height: 320px !important;
+  height: auto !important;
+  max-height: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 0.45rem !important;
+  padding: 1.15rem 1.25rem 1rem !important;
+  flex: 1 1 auto !important;
+  /* kill any accidental text wipe */
+  color: #fff;
+}
+
+/* Sky layers stay BEHIND content */
+.wx-env-hero .dash-hero-bg,
+.wx-env-hero .hero-clouds,
+.wx-env-hero .ambient-rays,
+.wx-env-hero .hero-sparkles,
+.wx-env-hero .hero-night-stars,
+.wx-env-hero .rain-ambient {
+  z-index: 0 !important;
+  pointer-events: none !important;
+}
+
+.wx-hero-stage.pg-hero-main,
+.pg-hero-main.wx-hero-stage {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.2fr) minmax(130px, 0.95fr) !important;
+  align-items: end !important;
+  gap: 0.5rem 0.85rem !important;
+  flex: 1 1 auto !important;
+  min-height: 190px !important;
+  max-height: none !important;
+  padding: 0.4rem 0 0.2rem !important;
+  position: relative !important;
+  z-index: 7 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.pg-hero-temp-block {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: flex-end !important;
+  min-width: 0 !important;
+  z-index: 8 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.wx-temp-line {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 0.15rem !important;
+}
+
+.wx-env-hero .pg-hero-temp,
+.pg-hero-temp,
+.type-hero-temp,
+.wx-env-hero .type-hero-temp {
+  display: inline-block !important;
+  font-size: clamp(72px, 9.5vw, 112px) !important;
+  font-weight: 650 !important;
+  line-height: 0.88 !important;
+  letter-spacing: -0.05em !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  text-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.45),
+    0 14px 36px rgba(0, 0, 0, 0.35) !important;
+  font-variant-numeric: tabular-nums !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.wx-hero-unit {
+  display: inline-block !important;
+  font-size: clamp(18px, 2vw, 24px) !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+  margin-top: 0.6rem !important;
+  font-weight: 550 !important;
+  opacity: 1 !important;
+}
+
+.wx-hero-condition {
+  display: block !important;
+  margin-top: 0.35rem !important;
+  font-size: clamp(1.15rem, 2vw, 1.4rem) !important;
+  font-weight: 600 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.wx-hero-sub {
+  display: block !important;
+  margin-top: 0.15rem !important;
+  font-size: 12.5px !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.hero-meta-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.4rem !important;
+  margin-top: 0.55rem !important;
+  opacity: 1 !important;
+}
+
+/* Person mascot — never hide */
+.wx-character-slot {
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  min-height: 200px !important;
+  max-height: 280px !important;
+  height: 100% !important;
+  position: relative !important;
+  z-index: 8 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+}
+
+.wx-character.wx-person {
+  width: min(100%, 210px) !important;
+  max-width: 230px !important;
+  min-width: 120px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: drop-shadow(0 16px 28px rgba(0, 0, 0, 0.42)) !important;
+  z-index: 1 !important;
+  position: relative !important;
+  right: auto !important;
+  bottom: auto !important;
+}
+
+.wx-character.wx-person .wx-character-stage {
+  width: 100% !important;
+  aspect-ratio: 200 / 260 !important;
+  line-height: 0 !important;
+}
+
+.wx-character.wx-person .wx-person-svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+}
+
+.wx-character.wx-person .wx-character-tip {
+  margin-top: 4px !important;
+  padding: 4px 12px !important;
+  border-radius: 999px !important;
+  background: rgba(8, 18, 36, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: rgba(255, 255, 255, 0.95) !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  opacity: 1 !important;
+}
+
+/* Hero metric rail */
+.wx-hero-rail {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  margin-top: 0.45rem !important;
+  padding-top: 0.75rem !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+  flex-shrink: 0 !important;
+  opacity: 1 !important;
+  z-index: 7 !important;
+  position: relative !important;
+}
+
+.wx-hero-rail-val {
+  color: #fff !important;
+  font-weight: 650 !important;
+  opacity: 1 !important;
+}
+
+/* Desk hero stretch */
+.wx-desk-hero {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 360px !important;
+}
+.wx-desk-hero .wx-env-hero {
+  flex: 1 1 auto !important;
+  min-height: 360px !important;
+  height: 100% !important;
+}
+
+/* Open panels — readable glass, not empty voids */
+.wx-open-panel {
+  background: rgba(10, 22, 42, 0.55) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  border-radius: 18px !important;
+}
+
+.wx-section-title {
+  color: rgba(255, 255, 255, 0.92) !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.01em;
+}
+
+/* Hour chips premium */
+.wx-hour-chip.pg-hour-chip {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 16px !important;
+  min-width: 72px !important;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.wx-hour-chip.pg-hour-chip.is-active {
+  background: rgba(94, 176, 255, 0.18) !important;
+  border-color: rgba(142, 200, 255, 0.45) !important;
+  box-shadow: 0 8px 22px rgba(30, 100, 180, 0.25);
+}
+
+/* World map never collapsed */
+.wx-world-map {
+  min-height: 0;
+}
+.wx-world-stage {
+  min-height: 240px !important;
+}
+.wx-desk-world {
+  width: 100%;
+  grid-column: 1 / -1;
+}
+
+/* Location / top row readable */
+.wx-loc-btn,
+.wx-hero-top {
+  position: relative;
+  z-index: 8;
+  opacity: 1 !important;
+}
+
+/* Mobile lock */
+@media (max-width: 1023px) {
+  .wx-env-hero.dash-hero,
+  .wx-env-hero.pg-hero {
+    min-height: 310px !important;
+  }
+  .wx-env-hero .pg-hero-content {
+    min-height: 290px !important;
+    padding: 1rem !important;
+  }
+  .wx-hero-stage.pg-hero-main {
+    min-height: 165px !important;
+    grid-template-columns: minmax(0, 1.15fr) minmax(110px, 0.9fr) !important;
+  }
+  .wx-env-hero .pg-hero-temp,
+  .pg-hero-temp {
+    font-size: clamp(64px, 17vw, 92px) !important;
+  }
+  .wx-character-slot {
+    min-height: 165px !important;
+    max-height: 210px !important;
+  }
+  .wx-character.wx-person {
+    width: min(100%, 155px) !important;
+  }
+  .wx-hero-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.35rem 0 !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .wx-env-hero.dash-hero,
+  .wx-env-hero.pg-hero {
+    min-height: 360px !important;
+  }
+  .wx-character.wx-person {
+    width: min(100%, 230px) !important;
+  }
+}
+
+/* Leaflet inside glass must not steal page scroll weirdly */
+.wx-world-leaflet.leaflet-container {
+  font: inherit;
+  background: #0a1220;
+}
+
+/* v5.1 — veil under content; never cover temp/mascot */
+.wx-env-hero.dash-hero::before,
+.dash-hero.pg-hero::before,
+.dash-hero::before {
+  z-index: 2 !important;
+  pointer-events: none !important;
+}
+.wx-env-hero .pg-hero-content,
+.dash-hero .pg-hero-content,
+.pg-hero-content {
+  z-index: 10 !important;
+}
+.wx-env-hero .wx-character-slot,
+.wx-env-hero .pg-hero-temp-block,
+.wx-env-hero .wx-hero-rail,
+.wx-env-hero .wx-hero-top {
+  z-index: 11 !important;
+  position: relative;
+}
+
+/* Prevent parent height:100% + min-height fight from zeroing hero */
+.wx-desk-hero .wx-env-hero.dash-hero {
+  height: auto !important;
+  min-height: 360px !important;
+}
+.wx-dash-flow .wx-env-hero {
+  height: auto !important;
+}
