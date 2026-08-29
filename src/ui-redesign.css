@@ -1,0 +1,245 @@
+/* WeatherGPT UI Redesign v1 — presentation only.
+   No data, API, state, routing, or business logic is changed. */
+
+:root {
+  --ui-bg: #050b16;
+  --ui-panel: rgba(11, 23, 43, 0.68);
+  --ui-panel-strong: rgba(13, 28, 52, 0.82);
+  --ui-line: rgba(255,255,255,.085);
+  --ui-line-strong: rgba(255,255,255,.14);
+  --ui-text: #f5f8fc;
+  --ui-muted: rgba(225,235,248,.62);
+  --ui-accent: #79bcff;
+  --ui-radius: 24px;
+  --ui-shadow: 0 20px 60px rgba(0, 7, 20, .38);
+}
+
+body {
+  background:
+    radial-gradient(circle at 15% 0%, rgba(64,126,204,.14), transparent 30%),
+    radial-gradient(circle at 90% 15%, rgba(75,132,235,.09), transparent 28%),
+    var(--ui-bg);
+}
+
+.app-shell {
+  background: transparent;
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    max-width: 1540px;
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .app-sidebar {
+    width: 68px;
+    border-radius: 22px;
+    background: linear-gradient(180deg, rgba(14,31,57,.88), rgba(6,15,29,.82));
+    border-color: var(--ui-line);
+    box-shadow: var(--ui-shadow), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+
+  .app-sidebar.sidebar-wide {
+    width: 208px;
+  }
+
+  .app-main-col {
+    border-radius: 26px;
+    background: linear-gradient(180deg, rgba(11,28,51,.48), rgba(4,12,24,.38));
+    border-color: var(--ui-line);
+    box-shadow: var(--ui-shadow), inset 0 1px 0 rgba(255,255,255,.035);
+  }
+}
+
+/* Main dashboard canvas */
+.page-pad {
+  max-width: 1480px;
+}
+
+.dash-hero {
+  border-radius: 28px !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  box-shadow: 0 24px 70px rgba(0,10,30,.34), inset 0 1px 0 rgba(255,255,255,.16) !important;
+  overflow: hidden;
+  isolation: isolate;
+  transition: transform .45s cubic-bezier(.22,1,.36,1), box-shadow .45s ease;
+}
+
+.dash-hero:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 28px 78px rgba(0,10,30,.40), inset 0 1px 0 rgba(255,255,255,.18) !important;
+}
+
+.dash-hero-bg {
+  transform: scale(1.02) !important;
+}
+
+.dash-hero-bg::after {
+  background:
+    linear-gradient(105deg, rgba(3,9,18,.52), transparent 48%, rgba(3,9,18,.08)),
+    linear-gradient(0deg, rgba(3,9,18,.38), transparent 52%) !important;
+}
+
+.hero-temp {
+  font-size: clamp(4.5rem, 9vw, 8.2rem) !important;
+  line-height: .86 !important;
+  font-weight: 650 !important;
+  letter-spacing: -.075em !important;
+  text-shadow: 0 8px 36px rgba(0,0,0,.22);
+}
+
+/* Glass cards: less uniform, more depth */
+.dash-glass,
+.hero-soft,
+.sheet-dark {
+  border-color: var(--ui-line) !important;
+  box-shadow: 0 14px 42px rgba(0,7,20,.22), inset 0 1px 0 rgba(255,255,255,.055) !important;
+}
+
+.dash-glass {
+  background: linear-gradient(145deg, rgba(19,37,64,.66), rgba(7,17,32,.58)) !important;
+  border-radius: var(--ui-radius) !important;
+  backdrop-filter: blur(20px) saturate(1.15);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15);
+}
+
+.dash-glass:hover {
+  border-color: rgba(255,255,255,.13) !important;
+  box-shadow: 0 18px 50px rgba(0,7,20,.28), inset 0 1px 0 rgba(255,255,255,.075) !important;
+}
+
+/* Metrics */
+.pg-metric {
+  position: relative;
+  min-height: 112px;
+  padding: 15px !important;
+  border-radius: 18px !important;
+  background: rgba(255,255,255,.045) !important;
+  border: 1px solid rgba(255,255,255,.075) !important;
+  transition: transform .28s cubic-bezier(.22,1,.36,1), background .28s ease, border-color .28s ease;
+}
+
+.pg-metric:hover {
+  transform: translateY(-2px);
+  background: rgba(255,255,255,.07) !important;
+  border-color: rgba(255,255,255,.13) !important;
+}
+
+.pg-metric-icon {
+  background: rgba(121,188,255,.11) !important;
+  border-color: rgba(121,188,255,.16) !important;
+}
+
+.pg-metric-label,
+.pg-metric-sub {
+  color: var(--ui-muted) !important;
+}
+
+.pg-metric-value {
+  color: var(--ui-text) !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.035em;
+}
+
+.pg-metric-unit {
+  color: rgba(245,248,252,.58) !important;
+}
+
+/* Forecast chips */
+.hour-chip,
+.day-chip {
+  border-radius: 18px !important;
+  background: rgba(255,255,255,.035) !important;
+  border-color: rgba(255,255,255,.065) !important;
+}
+
+.hour-chip:hover,
+.day-chip:hover {
+  background: rgba(255,255,255,.075) !important;
+  border-color: rgba(255,255,255,.13) !important;
+  transform: translateY(-2px) !important;
+}
+
+.hour-chip-active,
+.day-chip-active {
+  background: linear-gradient(145deg, rgba(121,188,255,.16), rgba(255,255,255,.07)) !important;
+  border-color: rgba(121,188,255,.3) !important;
+  box-shadow: 0 12px 28px rgba(50,130,220,.13), inset 0 1px 0 rgba(255,255,255,.12) !important;
+}
+
+/* Charts */
+.recharts-wrapper,
+.recharts-surface {
+  overflow: visible;
+}
+
+/* Navigation */
+.nav-glass {
+  background: rgba(4,12,24,.78) !important;
+  border-color: rgba(255,255,255,.085) !important;
+  backdrop-filter: blur(26px) saturate(1.35) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(1.35) !important;
+}
+
+.nav-pill-liquid {
+  border-radius: 15px !important;
+  transition: transform .25s cubic-bezier(.22,1,.36,1), background .25s ease, box-shadow .25s ease;
+}
+
+.nav-pill-liquid:hover {
+  transform: translateY(-1px);
+}
+
+/* Better interaction feedback without changing behavior */
+button,
+a,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid rgba(121,188,255,.75);
+  outline-offset: 3px;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+/* Mobile: prioritize content over decoration */
+@media (max-width: 767px) {
+  .dash-hero {
+    border-radius: 22px !important;
+    min-height: 270px !important;
+  }
+
+  .hero-temp {
+    font-size: clamp(4rem, 20vw, 6rem) !important;
+  }
+
+  .pg-metric {
+    min-height: 100px;
+    padding: 12px !important;
+  }
+
+  .dash-glass {
+    border-radius: 20px !important;
+  }
+}
+
+/* Final polish: consistent text rendering */
+.dash-hero,
+.dash-glass,
+.nav-glass,
+.sheet-dark {
+  text-rendering: optimizeLegibility;
+}
